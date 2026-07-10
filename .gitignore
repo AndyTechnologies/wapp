@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Build output
+dist/
+*.js.map
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+*.orig
+
+# Zig / Wasmtime downloads
+~/.wasm-linker/
+~/.wapp/
+
+# Project build artifacts
+.wapp_build/
+.wapp-cli/
+*.wasm
+*.wasm.map
+
+# Temp and logs
+tmp/
+temp/
+*.log
+*.pid
+
+# Env
+.env
+.env.local
+
+# Coverage
+coverage/
+
+# Scratch / notes
+.t
+todo.*

@@ -1,0 +1,40 @@
+{
+  "name": "wapp-cli",
+  "version": "1.0.0",
+  "description": "Orquestador para compilar proyectos AssemblyScript a ejecutables nativos usando wasm-compiler + wasm-linker",
+  "type": "module",
+  "bin": {
+    "wapp-cli": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/cli.js",
+    "dev": "tsc --watch",
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": ["<rootDir>/src"],
+    "testMatch": ["**/__tests__/**/*.test.ts"],
+    "globals": {
+      "ts-jest": {
+        "tsconfig": "tsconfig.test.json"
+      }
+    }
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "glob": "^13.0.6",
+    "wasm-compiler": "workspace:*",
+    "wasm-linker": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^6.0.3"
+  },
+  "license": "MIT"
+}

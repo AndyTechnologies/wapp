@@ -1,0 +1,32 @@
+{
+  "name": "wapp",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "postbuild": "pnpm mkdir:dists && pnpm copy:dists",
+    "mkdir:dists": "mkdir -p dist/dist-linker dist/dist-compiler dist/dist-cli",
+    "copy:dists": "pnpm copy:linker && pnpm copy:compiler && pnpm copy:cli",
+    "copy:linker": "cp -r packages/wasm-linker/dist/* ./dist/dist-linker/",
+    "copy:compiler": "cp -r packages/wasm-compiler/dist/* ./dist/dist-compiler/",
+    "copy:cli": "cp -r packages/wapp-cli/dist/* ./dist/dist-cli/",
+
+    "start": "pnpm --filter wasm-linker start",
+    "dev": "pnpm --filter wasm-linker dev",
+    "clean": "pnpm -r exec rm -rf dist node_modules",
+    "test": "pnpm -r test",
+    
+    "wasm-linker": "pnpm --filter wasm-linker start",
+    "compiler": "pnpm run wasm-compiler",
+    "wasm-compiler": "pnpm --filter wasm-compiler start",
+    "wapp-cli": "pnpm --filter wapp-cli start",
+    "orchestrator": "pnpm run wapp-cli",
+
+    "cross:linux-x64": "pnpm --filter wasm-linker start build -t x86_64-linux-gnu",
+    "cross:linux-arm64": "pnpm --filter wasm-linker start build -t aarch64-linux-gnu",
+    "cross:win-x64": "pnpm --filter wasm-linker start build -t x86_64-windows-gnu",
+    "cross:mac-x64": "pnpm --filter wasm-linker start build -t x86_64-macos",
+    "cross:mac-arm64": "pnpm --filter wasm-linker start build -t aarch64-macos",
+    "cross:all": "pnpm cross:linux-x64 && pnpm cross:linux-arm64 && pnpm cross:win-x64 && pnpm cross:mac-x64 && pnpm cross:mac-arm64"
+  },
+  "packageManager": "pnpm@11.10.0"
+}

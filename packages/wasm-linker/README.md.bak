@@ -1,0 +1,112 @@
+# wapp
+
+Convierte archivos `.wasm` en ejecutables nativos autocontenidos usando **Wasmtime C-API** + **zig cc**.
+
+## Instalación
+
+```bash
+pnpm add wapp
+# o global:
+pnpm add -g wapp
+```
+
+## Uso
+
+### Compilar módulos WebAssembly a ejecutable nativo
+
+```bash
+wapp build modulos/*.wasm -o mi-app
+wapp build ruta/carpeta -o app --entry main
+wapp build a.wasm b.wasm c.wasm -o app --target x86_64-linux-gnu
+```
+
+### Descargar dependencias
+
+```bash
+wapp setup                 # Descarga Zig + Wasmtime si no están cacheados
+wapp setup --ignore-cache  # Fuerza descarga completa aunque ya esté en caché
+```
+
+### Gestión de caché
+
+```bash
+wapp cache info   # Muestra ruta, tamaño y contenido de la caché
+wapp cache clear  # Elimina toda la caché de descargas
+```
+
+### Estado de dependencias
+
+```bash
+wapp status       # Muestra OK/FALTA para Zig y Wasmtime + tamaño de caché
+```
+
+## Opciones de `build`
+
+| Opción | Descripción | Defecto |
+|---|---|---|
+| `<input>` | Archivos `.wasm` o carpetas (separados por espacio) | — |
+| `-o, --output <file>` | Nombre del ejecutable de salida | **requerido** |
+| `-t, --target <triple>` | Tripleta de compilación (ej. `x86_64-linux-gnu`, `aarch64-macos`) | nativo |
+| `-e, --entry <name>` | Función exportada como punto de entrada | `_start` |
+| `--wasi` | Habilita interfaz WASI | `false` |
+| `--module-matching <strategy>` | Estrategia de resolución: `name-only` o `file-name` | `name-only` |
+| `--zig-path <path>` | Ruta personalizada a zig | auto-descargado |
+| `--wasmtime-path <path>` | Ruta personalizada a Wasmtime C-API | auto-descargado |
+
+## Ejemplos
+
+### Compilar una carpeta de módulos
+
+```bash
+wapp build ./wasm-modules -o mi-app
+```
+
+### Compilar con WASI y entrada personalizada
+
+```bash
+wapp build app.wasm lib.wasm -o server --entry handle_request --wasi
+```
+
+### Compilación cruzada para ARM macOS
+
+```bash
+wapp build mod.wasm -o linux-app --target aarch64-macos
+```
+
+### Usar zig del sistema
+
+```bash
+wapp build src/*.wasm -o app --zig-path /usr/local/bin/zig
+```
+
+### Pipeline completo
+
+```bash
+# 1. Descargar herramientas
+wapp setup
+
+# 2. Compilar
+wapp build modules/ -o app --wasi -e _start
+
+# 3. Ejecutar
+./app
+```
+
+## Variables de entorno
+
+| Variable | Descripción |
+|---|---|
+| `ZIG_PATH` | Ruta al ejecutable zig (alternativa a `--zig-path`) |
+
+## Arquitectura
+
+1. Lee los `.wasm`, extrae imports/exports con `WebAssembly.Module`
+2. Resuelve dependencias entre módulos (ordenamiento topológico, Kahn)
+3. Genera código C que embebe los bytes WASM y los instancia via Wasmtime C-API
+4. Compila con `zig cc` → ejecutable nativo estático
+
+La caché de descargas se almacena en `~/.wapp/`.
+
+## Licencia
+
+MIT
