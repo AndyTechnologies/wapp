@@ -9,6 +9,8 @@ import { CompilerError } from 'wapp-types';
 
 const MEMORY_CACHE = new LRUCache<string, CompileResult>();
 const DISK_CACHE_DIR = path.join(os.homedir(), '.wapp-cache', 'wasm-compiler');
+const DISK_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const DISK_CACHE_MAX_SIZE = 100 * 1024 * 1024;
 
 function getDiskCachePath(fileName: string, hash: string): string {
   const dir = path.join(DISK_CACHE_DIR, hash.slice(0, 2));
@@ -21,6 +23,11 @@ function tryLoadFromDiskCache(fileName: string, hash: string): CompileResult | n
   try {
     const cachePath = getDiskCachePath(fileName, hash);
     if (!fs.existsSync(cachePath)) return null;
+    const stat = fs.statSync(cachePath);
+    if (Date.now() - stat.mtimeMs > DISK_CACHE_MAX_AGE_MS) {
+      fs.unlinkSync(cachePath);
+      return null;
+    }
     const raw = fs.readFileSync(cachePath, 'utf-8');
     const parsed = JSON.parse(raw) as CompileResult & { wasmBytes: number[] };
     return { ...parsed, wasmBytes: new Uint8Array(parsed.wasmBytes) };
@@ -29,8 +36,67 @@ function tryLoadFromDiskCache(fileName: string, hash: string): CompileResult | n
   }
 }
 
+function getCacheDirSize(): number {
+  let totalSize = 0;
+  try {
+    if (!fs.existsSync(DISK_CACHE_DIR)) return 0;
+    const entries = fs.readdirSync(DISK_CACHE_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subDir = path.join(DISK_CACHE_DIR, entry.name);
+        for (const file of fs.readdirSync(subDir)) {
+          try {
+            totalSize += fs.statSync(path.join(subDir, file)).size;
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return totalSize;
+}
+
+function evictOldCacheEntries(): void {
+  try {
+    if (!fs.existsSync(DISK_CACHE_DIR)) return;
+    const allFiles: { path: string; mtime: number; size: number }[] = [];
+    const entries = fs.readdirSync(DISK_CACHE_DIR, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const subDir = path.join(DISK_CACHE_DIR, entry.name);
+        for (const file of fs.readdirSync(subDir)) {
+          try {
+            const fp = path.join(subDir, file);
+            const st = fs.statSync(fp);
+            allFiles.push({ path: fp, mtime: st.mtimeMs, size: st.size });
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+    allFiles.sort((a, b) => a.mtime - b.mtime);
+    let totalSize = allFiles.reduce((acc, f) => acc + f.size, 0);
+    for (const f of allFiles) {
+      if (totalSize <= DISK_CACHE_MAX_SIZE) break;
+      try {
+        fs.unlinkSync(f.path);
+        totalSize -= f.size;
+      } catch {
+        // skip
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function saveToDiskCache(fileName: string, hash: string, result: CompileResult): void {
   try {
+    evictOldCacheEntries();
     const cachePath = getDiskCachePath(fileName, hash);
     const serializable = { ...result, wasmBytes: Array.from(result.wasmBytes) };
     fs.writeFileSync(cachePath, JSON.stringify(serializable), 'utf-8');
