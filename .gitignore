@@ -44,5 +44,6 @@ temp/
 coverage/
 
 # Scratch / notes
-.t
+*.todo
 todo.*
+*.todo.md
