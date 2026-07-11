@@ -30,8 +30,6 @@ Thumbs.db
 # Project build artifacts
 .wapp_build/
 .wapp-cli/
-*.wasm
-*.wasm.map
 
 # Temp and logs
 tmp/
