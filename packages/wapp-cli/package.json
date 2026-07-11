@@ -14,22 +14,37 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "roots": ["<rootDir>/src"],
-    "testMatch": ["**/__tests__/**/*.test.ts"],
-    "extensionsToTreatAsEsm": [".ts", ".tsx", ".mts"],
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ],
+    "extensionsToTreatAsEsm": [
+      ".ts",
+      ".tsx",
+      ".mts"
+    ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "transform": {
-      "^.+\\.m?tsx?$": ["ts-jest", { "tsconfig": "tsconfig.test.json", "useESM": true }]
+      "^.+\\.m?tsx?$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.test.json",
+          "useESM": true
+        }
+      ]
     }
   },
   "dependencies": {
     "commander": "^15.0.0",
     "glob": "^13.0.6",
+    "picocolors": "^1.1.1",
+    "wapp-types": "workspace:*",
     "wasm-compiler": "workspace:*",
-    "wasm-linker": "workspace:*",
-    "wapp-types": "workspace:*"
+    "wasm-linker": "workspace:*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

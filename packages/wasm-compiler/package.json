@@ -23,13 +23,23 @@
   "jest": {
     "preset": "ts-jest/presets/default-esm-legacy",
     "testEnvironment": "node",
-    "roots": ["<rootDir>/src"],
-    "testMatch": ["**/__tests__/**/*.test.ts"],
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "testMatch": [
+      "**/__tests__/**/*.test.ts"
+    ],
     "moduleNameMapper": {
       "^(\\.{1,2}/.*)\\.js$": "$1"
     },
     "transform": {
-      "^.+\\.m?tsx?$": ["ts-jest/legacy", { "tsconfig": "tsconfig.test.json", "useESM": true }]
+      "^.+\\.m?tsx?$": [
+        "ts-jest/legacy",
+        {
+          "tsconfig": "tsconfig.test.json",
+          "useESM": true
+        }
+      ]
     }
   },
   "keywords": [
@@ -45,6 +55,7 @@
     "assemblyscript": "^0.28.19",
     "commander": "^15.0.0",
     "glob": "^13.0.6",
+    "picocolors": "^1.1.1",
     "wapp-types": "workspace:*"
   },
   "devDependencies": {
