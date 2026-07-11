@@ -2,11 +2,11 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { spawnSync } from 'child_process';
-import { downloadFileWithResume, renderProgressBar, clearProgressLine } from './downloader.js';
+import { downloadFileWithResume } from './downloader.js';
 import type { DownloadOptions } from './downloader.js';
 import { extractTarXz } from './extract.js';
 
-const ZIG_VERSION = '0.16.0';
+const ZIG_VERSION = process.env.ZIG_VERSION || '0.16.0';
 const ZIG_BASE_URL = `https://ziglang.org/download/${ZIG_VERSION}`;
 
 function getZigPlatformTriple(): string {
@@ -80,7 +80,6 @@ export async function ensureZigAvailable(dlOpts?: DownloadOptions): Promise<stri
   const archivePath = path.join(cacheDir, info.fileName);
   await downloadFileWithResume(info.url, archivePath, dlOpts);
 
-  clearProgressLine();
   console.log('Extrayendo Zig...');
   await extractTarXz(archivePath, cacheDir, 1);
   fs.unlinkSync(archivePath);

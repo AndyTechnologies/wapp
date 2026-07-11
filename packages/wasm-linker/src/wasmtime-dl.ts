@@ -1,11 +1,11 @@
 import os from 'os';
 import path from 'path';
 import fs from 'fs';
-import { downloadFileWithResume, renderProgressBar, clearProgressLine } from './downloader.js';
+import { downloadFileWithResume } from './downloader.js';
 import type { DownloadOptions } from './downloader.js';
 import { extractTarXz } from './extract.js';
 
-const WASMTIME_VERSION = '46.0.1';
+const WASMTIME_VERSION = process.env.WASMTIME_VERSION || '46.0.1';
 const WASMTIME_BASE_URL = `https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}`;
 
 function getPlatformSuffix(): string {
@@ -79,7 +79,6 @@ export async function ensureWasmtimeAvailable(dlOpts?: DownloadOptions): Promise
   const archivePath = path.join(cacheDir, info.fileName);
   await downloadFileWithResume(info.url, archivePath, dlOpts);
 
-  clearProgressLine();
   console.log('Extrayendo...');
   await extractTarXz(archivePath, cacheDir, 1);
   fs.unlinkSync(archivePath);
