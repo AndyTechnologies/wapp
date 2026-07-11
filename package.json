@@ -34,10 +34,5 @@
     "cross:mac-arm64": "pnpm --filter wasm-linker start build -t aarch64-macos",
     "cross:all": "pnpm cross:linux-x64 && pnpm cross:linux-arm64 && pnpm cross:win-x64 && pnpm cross:mac-x64 && pnpm cross:mac-arm64"
   },
-  "packageManager": "pnpm@11.10.0",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "unrs-resolver"
-    ]
-  }
+  "packageManager": "pnpm@11.10.0"
 }
