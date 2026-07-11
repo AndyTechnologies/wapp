@@ -1,3 +1,6 @@
+export { logger, colorizeByStatus, formatBytes } from './logger.js';
+export type { Logger } from './logger.js';
+
 export interface WasmExport {
   name: string;
   kind: 'function' | 'memory' | 'table' | 'global';
