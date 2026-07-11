@@ -4,6 +4,7 @@ import { glob } from 'glob';
 import path from 'path';
 import fs from 'fs';
 import { compileWasm } from './index.js';
+import { hashString } from './utils.js';
 
 function isWasmTsFile(file: string): boolean {
   return file.endsWith('.wasm.ts') || file.endsWith('.asm.ts') || file.endsWith('.asm');
@@ -32,6 +33,58 @@ async function resolveInputFiles(inputs: string[]): Promise<string[]> {
   return files;
 }
 
+interface CompileFileOptions {
+  outDir: string;
+  isDev: boolean;
+  sourceMap: boolean;
+  runtime: string;
+  optimizeLevel: number;
+  shrinkLevel?: number;
+}
+
+async function compileSingleFile(file: string, options: CompileFileOptions): Promise<{ file: string; success: boolean; output?: string; error?: string }> {
+  const sourceCode = fs.readFileSync(file, 'utf-8');
+  const relativeName = path.relative(process.cwd(), file);
+
+  try {
+    const result = await compileWasm({
+      fileName: file,
+      sourceCode,
+      isDev: options.isDev,
+      sourceMap: options.sourceMap,
+      runtime: options.runtime,
+      optimizeLevel: options.optimizeLevel,
+      shrinkLevel: options.shrinkLevel,
+    });
+
+    let baseName: string;
+    if (file.endsWith('.wasm.ts')) {
+      baseName = path.basename(file, '.wasm.ts');
+    } else if (file.endsWith('.asm.ts')) {
+      baseName = path.basename(file, '.asm.ts');
+    } else {
+      baseName = path.basename(file, path.extname(file));
+    }
+
+    const wasmOut = path.join(options.outDir, `${baseName}.wasm`);
+    const dtsOut = path.join(options.outDir, `${baseName}.d.ts`);
+    const jsOut = path.join(options.outDir, `${baseName}.js`);
+
+    fs.writeFileSync(wasmOut, result.wasmBytes);
+    fs.writeFileSync(dtsOut, result.dtsContent);
+    fs.writeFileSync(jsOut, result.bindingsJs);
+
+    if (result.sourceMap) {
+      const mapOut = path.join(options.outDir, `${baseName}.wasm.map`);
+      fs.writeFileSync(mapOut, result.sourceMap);
+    }
+
+    return { file: relativeName, success: true, output: wasmOut };
+  } catch (err: any) {
+    return { file: relativeName, success: false, error: err.message };
+  }
+}
+
 async function buildCommand(files: string[], options: {
   outDir: string;
   release: boolean;
@@ -39,6 +92,7 @@ async function buildCommand(files: string[], options: {
   optimizeLevel: string;
   shrinkLevel: string;
   sourcemap: boolean;
+  parallel?: boolean;
 }): Promise<void> {
   const outDir = path.resolve(options.outDir);
   const isDev = !options.release;
@@ -50,52 +104,41 @@ async function buildCommand(files: string[], options: {
 
   const inputFiles = await resolveInputFiles(files);
 
-  const results: { file: string; success: boolean; output?: string; error?: string }[] = [];
+  const compileOpts: CompileFileOptions = {
+    outDir,
+    isDev,
+    sourceMap,
+    runtime: options.runtime,
+    optimizeLevel: parseInt(options.optimizeLevel, 10),
+    shrinkLevel: options.shrinkLevel ? parseInt(options.shrinkLevel, 10) : undefined,
+  };
 
-  for (const file of inputFiles) {
-    const sourceCode = fs.readFileSync(file, 'utf-8');
-    const relativeName = path.relative(process.cwd(), file);
+  console.log(`Compilando ${inputFiles.length} archivos...`);
 
-    console.log(`Compilando ${relativeName}...`);
+  let results: { file: string; success: boolean; output?: string; error?: string }[];
 
-    try {
-      const result = await compileWasm({
-        fileName: file,
-        sourceCode,
-        isDev,
-        sourceMap,
-        runtime: options.runtime,
-        optimizeLevel: parseInt(options.optimizeLevel, 10),
-        shrinkLevel: options.shrinkLevel ? parseInt(options.shrinkLevel, 10) : undefined,
-      });
-
-      let baseName: string;
-      if (file.endsWith('.wasm.ts')) {
-        baseName = path.basename(file, '.wasm.ts');
-      } else if (file.endsWith('.asm.ts')) {
-        baseName = path.basename(file, '.asm.ts');
+  if (options.parallel !== false && inputFiles.length > 1) {
+    const promises = inputFiles.map(file => compileSingleFile(file, compileOpts));
+    const settled = await Promise.allSettled(promises);
+    results = settled.map(r => r.status === 'fulfilled' ? r.value : { file: 'unknown', success: false, error: r.reason?.message });
+  } else {
+    results = [];
+    for (const file of inputFiles) {
+      const result = await compileSingleFile(file, compileOpts);
+      results.push(result);
+      if (result.success) {
+        console.log(`  OK: ${result.file} -> ${result.output}${result.output ? ` (${fs.statSync(result.output).size} bytes)` : ''}`);
       } else {
-        baseName = path.basename(file, path.extname(file));
+        console.log(`  FAIL: ${result.file} — ${result.error}`);
       }
+    }
+  }
 
-      const wasmOut = path.join(outDir, `${baseName}.wasm`);
-      const dtsOut = path.join(outDir, `${baseName}.d.ts`);
-      const jsOut = path.join(outDir, `${baseName}.js`);
-
-      fs.writeFileSync(wasmOut, result.wasmBytes);
-      fs.writeFileSync(dtsOut, result.dtsContent);
-      fs.writeFileSync(jsOut, result.bindingsJs);
-
-      if (result.sourceMap) {
-        const mapOut = path.join(outDir, `${baseName}.wasm.map`);
-        fs.writeFileSync(mapOut, result.sourceMap);
-      }
-
-      results.push({ file: relativeName, success: true, output: wasmOut });
-      console.log(`  -> ${wasmOut} (${result.wasmBytes.length} bytes)`);
-    } catch (err: any) {
-      results.push({ file: relativeName, success: false, error: err.message });
-      console.log(`  ERROR: ${err.message}`);
+  for (const r of results) {
+    if (r.success) {
+      console.log(`  OK: ${r.file} -> ${r.output}`);
+    } else {
+      console.log(`  FAIL: ${r.file} — ${r.error}`);
     }
   }
 
@@ -103,13 +146,74 @@ async function buildCommand(files: string[], options: {
   const fail = results.filter(r => !r.success).length;
 
   console.log(`\nResumen: ${ok} compilados, ${fail} fallos`);
-  if (fail > 0) {
-    for (const r of results) {
-      if (!r.success) console.log(`  FAIL: ${r.file} — ${r.error}`);
-    }
-  }
 
   process.exit(fail > 0 ? 1 : 0);
+}
+
+async function watchCommand(files: string[], options: {
+  outDir: string;
+  release: boolean;
+  runtime: string;
+  optimizeLevel: string;
+  shrinkLevel: string;
+  sourcemap: boolean;
+}): Promise<void> {
+  const outDir = path.resolve(options.outDir);
+  const isDev = !options.release;
+
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+
+  const inputFiles = await resolveInputFiles(files);
+
+  const watchedDirs = new Set<string>();
+  for (const f of inputFiles) {
+    watchedDirs.add(path.dirname(f));
+  }
+
+  console.log(`Vigilando ${inputFiles.length} archivos en ${watchedDirs.size} directorios...`);
+  console.log('Esperando cambios... (Ctrl+C para salir)\n');
+
+  const debouncedCompile = debounce(async () => {
+    console.log('\n--- Cambio detectado, recompilando... ---\n');
+    try {
+      const results = await Promise.all(inputFiles.map(f =>
+        compileSingleFile(f, { outDir, isDev, sourceMap: options.sourcemap, runtime: options.runtime, optimizeLevel: parseInt(options.optimizeLevel, 10) })
+      ));
+      for (const r of results) {
+        if (r.success) {
+          console.log(`  OK: ${r.file} -> ${r.output}`);
+        } else {
+          console.log(`  FAIL: ${r.file} — ${r.error}`);
+        }
+      }
+    } catch (err: any) {
+      console.log(`  ERROR: ${err.message}`);
+    }
+    console.log('\nEsperando cambios... (Ctrl+C para salir)\n');
+  }, 300);
+
+  for (const dir of watchedDirs) {
+    fs.watch(dir, { recursive: true }, (eventType, filename) => {
+      if (filename && (filename.endsWith('.wasm.ts') || filename.endsWith('.asm.ts') || filename.endsWith('.ts') || filename.endsWith('.asm'))) {
+        const fullPath = path.join(dir, filename);
+        if (inputFiles.includes(fullPath) || inputFiles.some(f => path.basename(f) === filename)) {
+          debouncedCompile();
+        }
+      }
+    });
+  }
+
+  await new Promise(() => {});
+}
+
+function debounce<T extends (...args: any[]) => any>(fn: T, delay: number): T {
+  let timer: ReturnType<typeof setTimeout>;
+  return ((...args: any[]) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  }) as T;
 }
 
 const program = new Command();
@@ -126,12 +230,32 @@ program
   .option('-o, --outDir <dir>', 'Directorio de salida', 'wasm-out')
   .option('--release', 'Modo release (optimizado, sin sourcemaps)', false)
   .option('--runtime <name>', 'Runtime (incremental, minimal, stub, full)', 'incremental')
-  .option('--optimizeLevel <n>', 'Nivel de optimización 0-3', '3')
-  .option('--shrinkLevel <n>', 'Nivel de reducción 0-2')
+  .option('--optimizeLevel <n>', 'Nivel de optimizacion 0-3', '3')
+  .option('--shrinkLevel <n>', 'Nivel de reduccion 0-2')
   .option('--no-sourcemap', 'Deshabilitar sourcemaps en modo debug')
+  .option('--no-parallel', 'Deshabilitar compilacion paralela')
   .action(async (files: string[], options) => {
     try {
       await buildCommand(files, options);
+    } catch (err) {
+      console.log(`\nError: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('watch')
+  .description('Vigila archivos AssemblyScript y recompila automaticamente')
+  .argument('<files...>', 'Archivos .wasm.ts, .ts, .asm o carpetas a compilar')
+  .option('-o, --outDir <dir>', 'Directorio de salida', 'wasm-out')
+  .option('--release', 'Modo release (optimizado, sin sourcemaps)', false)
+  .option('--runtime <name>', 'Runtime (incremental, minimal, stub, full)', 'incremental')
+  .option('--optimizeLevel <n>', 'Nivel de optimizacion 0-3', '3')
+  .option('--shrinkLevel <n>', 'Nivel de reduccion 0-2')
+  .option('--no-sourcemap', 'Deshabilitar sourcemaps en modo debug')
+  .action(async (files: string[], options) => {
+    try {
+      await watchCommand(files, options);
     } catch (err) {
       console.log(`\nError: ${(err as Error).message}`);
       process.exit(1);

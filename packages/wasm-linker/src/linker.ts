@@ -1,15 +1,4 @@
-import { WasmModuleInfo, WasmExport } from './wasm-io.js';
-
-export interface ResolvedModule {
-  module: WasmModuleInfo;
-  index: number;
-  instanceName: string;
-}
-
-export interface ResolvedLink {
-  order: ResolvedModule[];
-  exportMap: Map<string, { instance: string; name: string }>;
-}
+import { WasmModuleInfo, WasmExport, ResolvedModule, ResolvedLink, ModuleMatchingStrategy, LinkerError } from 'wapp-types';
 
 const KNOWN_HOST_IMPORTS = new Set([
   'env.abort',
@@ -19,16 +8,16 @@ const KNOWN_HOST_IMPORTS = new Set([
 
 export function resolveDependencies(
   modules: WasmModuleInfo[],
-  strategy: 'name-only' | 'file-name'
+  strategy: ModuleMatchingStrategy,
 ): ResolvedLink {
   const availableExports = new Map<string, { module: WasmModuleInfo; export: WasmExport }>();
 
   for (const mod of modules) {
-    const fileBase = mod.fileName.replace(/\.[^/.]+$/, "").split('/').pop()!;
+    const fileBase = mod.fileName.replace(/\.[^/.]+$/, '').split('/').pop()!;
     for (const exp of mod.exports) {
       const key = strategy === 'name-only' ? exp.name : `${fileBase}:${exp.name}`;
       if (availableExports.has(key)) {
-        throw new Error(`Conflicto: la exportacion '${key}' esta definida en varios modulos.`);
+        throw new LinkerError(`Conflicto: la exportacion '${key}' esta definida en varios modulos.`);
       }
       availableExports.set(key, { module: mod, export: exp });
     }
@@ -47,7 +36,7 @@ export function resolveDependencies(
       const lookupKey = strategy === 'name-only' ? imp.name : `${imp.module}:${imp.name}`;
       const expInfo = availableExports.get(lookupKey);
       if (!expInfo) {
-        throw new Error(`Importacion no resuelta: '${imp.module}.${imp.name}' requerida por ${mod.fileName}`);
+        throw new LinkerError(`Importacion no resuelta: '${imp.module}.${imp.name}' requerida por ${mod.fileName}`);
       }
       if (expInfo.module !== mod) {
         deps.push(expInfo.module);
@@ -58,10 +47,8 @@ export function resolveDependencies(
 
   const inDegree = new Map<WasmModuleInfo, number>();
   for (const mod of modules) inDegree.set(mod, 0);
-  for (const [, deps] of dependencies.entries()) {
-    for (const dep of deps) {
-      inDegree.set(dep, (inDegree.get(dep) || 0) + 1);
-    }
+  for (const [mod, deps] of dependencies.entries()) {
+    inDegree.set(mod, deps.length);
   }
 
   const queue: WasmModuleInfo[] = [];
@@ -75,7 +62,7 @@ export function resolveDependencies(
     order.push(mod);
     for (const [other, deps] of dependencies.entries()) {
       if (deps.includes(mod)) {
-        const newDeg = (inDegree.get(other) || 1) - 1;
+        const newDeg = (inDegree.get(other) || 0) - 1;
         inDegree.set(other, newDeg);
         if (newDeg === 0) queue.push(other);
       }
@@ -83,7 +70,7 @@ export function resolveDependencies(
   }
 
   if (order.length !== modules.length) {
-    throw new Error('Dependencia circular detectada entre los modulos .wasm.');
+    throw new LinkerError('Dependencia circular detectada entre los modulos .wasm.');
   }
 
   const resolvedOrder: ResolvedModule[] = order.map((mod, idx) => ({
@@ -95,7 +82,7 @@ export function resolveDependencies(
   const exportMap = new Map<string, { instance: string; name: string }>();
   for (const resMod of resolvedOrder) {
     for (const exp of resMod.module.exports) {
-      const fileBase = resMod.module.fileName.replace(/\.[^/.]+$/, "").split('/').pop()!;
+      const fileBase = resMod.module.fileName.replace(/\.[^/.]+$/, '').split('/').pop()!;
       const key = strategy === 'name-only' ? exp.name : `${fileBase}:${exp.name}`;
       if (!exportMap.has(key)) {
         exportMap.set(key, { instance: resMod.instanceName, name: exp.name });

@@ -18,23 +18,25 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "tsc --watch",
-    "test": "jest"
+    "test": "NODE_OPTIONS=\"--experimental-vm-modules\" jest"
   },
   "jest": {
-    "preset": "ts-jest",
     "testEnvironment": "node",
     "roots": ["<rootDir>/src"],
     "testMatch": ["**/__tests__/**/*.test.ts"],
-    "globals": {
-      "ts-jest": {
-        "tsconfig": "tsconfig.test.json"
-      }
+    "extensionsToTreatAsEsm": [".ts", ".tsx", ".mts"],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "transform": {
+      "^.+\\.m?tsx?$": ["ts-jest", { "tsconfig": "tsconfig.test.json", "useESM": true }]
     }
   },
   "dependencies": {
     "commander": "^15.0.0",
     "glob": "^13.0.6",
-    "tar": "^7.5.19"
+    "tar": "^7.5.19",
+    "wapp-types": "workspace:*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

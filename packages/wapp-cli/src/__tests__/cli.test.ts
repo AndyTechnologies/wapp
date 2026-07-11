@@ -7,6 +7,17 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
 const cliScript = path.join(projectRoot, 'dist', 'cli.js');
+const tmpRoot = path.resolve(os.tmpdir(), 'wapp-cli-test');
+
+afterEach(() => {
+  try {
+    if (fs.existsSync(tmpRoot)) {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+});
 
 function run(args: string[], cwd: string) {
   return spawnSync(process.execPath, [cliScript, ...args], {
@@ -31,14 +42,6 @@ function generateSimpleWasm(outPath: string): boolean {
 }
 
 describe('wapp-cli', () => {
-  const tmpRoot = path.resolve(os.tmpdir(), 'wapp-cli-test');
-
-  afterEach(() => {
-    if (fs.existsSync(tmpRoot)) {
-      fs.rmSync(tmpRoot, { recursive: true, force: true });
-    }
-  });
-
   it('init crea wapp.json y falla en duplicado', () => {
     const testDir = path.join(tmpRoot, 'test-init');
     fs.mkdirSync(testDir, { recursive: true });

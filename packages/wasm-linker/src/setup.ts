@@ -2,6 +2,7 @@ import { ensureZigAvailable, getZigCachedPath, zigDownloadInfo } from './zig-dow
 import { ensureWasmtimeAvailable, getWasmtimeCachedPaths, wasmtimeDownloadInfo } from './wasmtime-dl.js';
 import { clearCache, getCacheInfo } from './cache.js';
 import type { DownloadOptions } from './downloader.js';
+import { renderProgressBar, clearProgressLine } from './downloader.js';
 
 export interface SetupOptions {
   ignoreCache?: boolean;
@@ -11,39 +12,6 @@ export interface SetupStatus {
   zig: { status: 'ok' | 'missing' | 'error'; path?: string; error?: string };
   wasmtime: { status: 'ok' | 'missing' | 'error'; path?: string; error?: string };
   cacheSize: string;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  const val = bytes / Math.pow(1024, i);
-  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-const progressTimestamps = new Map<string, number>();
-
-function renderProgressBar(label: string, received: number, total: number): void {
-  const now = Date.now();
-  const last = progressTimestamps.get(label) || 0;
-  if (now - last < 100) return;
-  progressTimestamps.set(label, now);
-
-  const barWidth = 30;
-  const pct = total > 0 ? (received / total) * 100 : 0;
-  const filled = Math.round((pct / 100) * barWidth);
-  const bar = '='.repeat(filled) + '-'.repeat(barWidth - filled);
-
-  const pctStr = total > 0 ? `${pct.toFixed(1)}%` : '?%';
-  const recvStr = formatBytes(received);
-  const totalStr = total > 0 ? formatBytes(total) : '?';
-
-  const labelPad = label.padEnd(12);
-  process.stderr.write(`\r  ${labelPad} [${bar}] ${pctStr.padStart(6)}  ${recvStr.padStart(8)} / ${totalStr.padStart(8)}`);
-}
-
-function clearProgressLine(): void {
-  process.stderr.write('\r' + ' '.repeat(80) + '\r');
 }
 
 export async function runSetup(options?: SetupOptions): Promise<void> {
@@ -56,7 +24,6 @@ export async function runSetup(options?: SetupOptions): Promise<void> {
 
   console.log('');
 
-  // ── Zig ──────────────────────────────────────────────
   const cachedZig = getZigCachedPath();
   if (cachedZig && !ignoreCache) {
     console.log(`  [Zig]        ${cachedZig} — OK`);
@@ -80,14 +47,13 @@ export async function runSetup(options?: SetupOptions): Promise<void> {
       if (err.statusCode) {
         console.error(`                URL: ${err.url}`);
         if (err.statusCode === 404) {
-          console.error('                Sugerencia: La versión especificada puede no existir.');
+          console.error('                Sugerencia: La version especificada puede no existir.');
         }
       }
       throw err;
     }
   }
 
-  // ── Wasmtime ─────────────────────────────────────────
   const cachedWt = getWasmtimeCachedPaths();
   if (cachedWt && !ignoreCache) {
     console.log(`  [Wasmtime]   ${cachedWt.libPath} — OK`);
@@ -111,7 +77,7 @@ export async function runSetup(options?: SetupOptions): Promise<void> {
       if (err.statusCode) {
         console.error(`                URL: ${err.url}`);
         if (err.statusCode === 302) {
-          console.error('                Sugerencia: Puede haber una redirección no seguida automáticamente.');
+          console.error('                Sugerencia: Puede haber una redireccion no seguida automaticamente.');
         }
       }
       throw err;

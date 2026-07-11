@@ -1,25 +1,15 @@
 import { glob } from 'glob';
 import path from 'path';
 import fs from 'fs';
-import { readWasmModules, WasmModuleInfo } from './wasm-io.js';
+import { NativeAppOptions, LinkerError } from 'wapp-types';
+import { readWasmModules } from './wasm-io.js';
 import { resolveDependencies } from './linker.js';
-import { generateCCode } from './codegen.js';
+import { generateCCode, validateEntryExport } from './codegen.js';
 import { ensureWasmtimeAvailable } from './wasmtime-dl.js';
 import { ensureZigAvailable } from './zig-downloader.js';
 import { compileWithZig } from './compiler.js';
 
-export interface NativeAppOptions {
-  inputPaths: string[];
-  output: string;
-  target?: string;
-  entry: string;
-  wasi: boolean;
-  moduleMatching: 'name-only' | 'file-name';
-  zigPath?: string;
-  wasmtimePath?: string;
-}
-
-export async function createNativeApp(options: NativeAppOptions) {
+export async function createNativeApp(options: NativeAppOptions): Promise<void> {
   let wasmFiles: string[] = [];
   for (const p of options.inputPaths) {
     if (fs.existsSync(p)) {
@@ -30,20 +20,20 @@ export async function createNativeApp(options: NativeAppOptions) {
       } else if (stat.isFile() && p.endsWith('.wasm')) {
         wasmFiles.push(path.resolve(p));
       } else {
-        throw new Error(`La ruta '${p}' no es un archivo .wasm ni una carpeta.`);
+        throw new LinkerError(`La ruta '${p}' no es un archivo .wasm ni una carpeta.`);
       }
     } else {
-      throw new Error(`La ruta '${p}' no existe.`);
+      throw new LinkerError(`La ruta '${p}' no existe.`);
     }
   }
 
   if (wasmFiles.length === 0) {
-    throw new Error('No se encontraron archivos .wasm.');
+    throw new LinkerError('No se encontraron archivos .wasm.');
   }
 
   console.log(`Modulos encontrados: ${wasmFiles.map(f => path.basename(f)).join(', ')}`);
 
-  const modules: WasmModuleInfo[] = await readWasmModules(wasmFiles);
+  const modules = await readWasmModules(wasmFiles);
 
   const resolved = resolveDependencies(modules, options.moduleMatching);
 
@@ -51,6 +41,8 @@ export async function createNativeApp(options: NativeAppOptions) {
   resolved.order.forEach((mod, idx) => {
     console.log(`  ${idx}: ${path.basename(mod.module.fileName)} (exports: ${mod.module.exports.map(e => e.name).join(', ')})`);
   });
+
+  validateEntryExport(resolved, options.entry);
 
   const cCode = generateCCode(resolved, options.entry, options.wasi);
 

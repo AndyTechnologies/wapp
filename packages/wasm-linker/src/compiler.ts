@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import { ZigError } from 'wapp-types';
 
 export interface CompileOptions {
   source: string;
@@ -30,8 +31,8 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
     const proc = spawn(zigExe, args, { stdio: 'inherit' });
     proc.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`zig cc termino con codigo ${code}`));
+      else reject(new ZigError(`zig c++ termino con codigo ${code}`, { exitCode: code }));
     });
-    proc.on('error', (err) => reject(err));
+    proc.on('error', (err) => reject(new ZigError(`Error al ejecutar zig: ${err.message}`, { causeMessage: err.message })));
   });
 }

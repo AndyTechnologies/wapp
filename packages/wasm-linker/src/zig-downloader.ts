@@ -2,7 +2,8 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { spawnSync } from 'child_process';
-import { downloadFileWithResume, DownloadOptions } from './downloader.js';
+import { downloadFileWithResume, renderProgressBar, clearProgressLine } from './downloader.js';
+import type { DownloadOptions } from './downloader.js';
 import { extractTarXz } from './extract.js';
 
 const ZIG_VERSION = '0.16.0';
@@ -35,7 +36,7 @@ function zigExecutablePath(): string {
   return path.join(dir, 'zig' + ext);
 }
 
-export function zigDownloadInfo(): { version: string; url: string; fileName: string } {
+export function zigDownloadInfo(): { version: string; url: string; fileName: string; size?: number } {
   const triple = getZigPlatformTriple();
   const ext = os.platform() === 'win32' ? 'zip' : 'tar.xz';
   const fileName = `zig-${triple}-${ZIG_VERSION}.${ext}`;
@@ -79,6 +80,7 @@ export async function ensureZigAvailable(dlOpts?: DownloadOptions): Promise<stri
   const archivePath = path.join(cacheDir, info.fileName);
   await downloadFileWithResume(info.url, archivePath, dlOpts);
 
+  clearProgressLine();
   console.log('Extrayendo Zig...');
   await extractTarXz(archivePath, cacheDir, 1);
   fs.unlinkSync(archivePath);

@@ -4,5 +4,6 @@
     "module": "esnext",
     "types": ["jest", "node"]
   },
-  "include": ["src/__tests__"]
+  "include": ["src/__tests__"],
+  "exclude": []
 }

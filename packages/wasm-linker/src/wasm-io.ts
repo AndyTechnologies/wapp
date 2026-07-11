@@ -1,22 +1,5 @@
 import fs from 'fs';
-
-export interface WasmExport {
-  name: string;
-  kind: 'function' | 'memory' | 'table' | 'global';
-}
-
-export interface WasmImport {
-  module: string;
-  name: string;
-  kind: 'function' | 'memory' | 'table' | 'global';
-}
-
-export interface WasmModuleInfo {
-  fileName: string;
-  buffer: Buffer;
-  imports: WasmImport[];
-  exports: WasmExport[];
-}
+import { WasmModuleInfo, WasmExport, WasmImport } from 'wapp-types';
 
 export async function readWasmModules(filePaths: string[]): Promise<WasmModuleInfo[]> {
   const modules: WasmModuleInfo[] = [];

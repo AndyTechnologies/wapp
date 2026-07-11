@@ -8,22 +8,26 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
 const cliScript = path.join(projectRoot, 'dist', 'cli.js');
 const examplesDir = path.join(projectRoot, 'examples');
+const outDir = path.resolve(os.tmpdir(), 'wasm-compiler-test-out');
 
-describe('wasm-compiler', () => {
-  const outDir = path.resolve(os.tmpdir(), 'wasm-compiler-test-out');
-  const names = ['math', 'strings', 'buffer'];
+beforeAll(() => {
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+});
 
-  beforeAll(() => {
-    if (!fs.existsSync(outDir)) {
-      fs.mkdirSync(outDir, { recursive: true });
-    }
-  });
-
-  afterAll(() => {
+afterAll(() => {
+  try {
     if (fs.existsSync(outDir)) {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  });
+  } catch {
+    // ignore cleanup errors
+  }
+});
+
+describe('wasm-compiler', () => {
+  const names = ['math', 'strings', 'buffer'];
 
   it('compila ejemplos AssemblyScript a WebAssembly valido', () => {
     const result = spawnSync('node', [cliScript, 'build', '-o', outDir, examplesDir], {

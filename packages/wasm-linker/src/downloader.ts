@@ -2,22 +2,44 @@ import fs from 'fs';
 import https from 'https';
 import http from 'http';
 import { pipeline } from 'stream/promises';
+import { DownloadError } from 'wapp-types';
 
 export interface DownloadOptions {
   ignoreCache?: boolean;
   onProgress?: (received: number, total: number) => void;
 }
 
-export class DownloadError extends Error {
-  constructor(
-    message: string,
-    public readonly url: string,
-    public readonly statusCode?: number,
-    public readonly cause?: Error,
-  ) {
-    super(message);
-    this.name = 'DownloadError';
-  }
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const val = bytes / Math.pow(1024, i);
+  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+const progressTimestamps = new Map<string, number>();
+
+export function renderProgressBar(label: string, received: number, total: number): void {
+  const now = Date.now();
+  const last = progressTimestamps.get(label) || 0;
+  if (now - last < 100) return;
+  progressTimestamps.set(label, now);
+
+  const barWidth = 30;
+  const pct = total > 0 ? (received / total) * 100 : 0;
+  const filled = Math.round((pct / 100) * barWidth);
+  const bar = '='.repeat(filled) + '-'.repeat(barWidth - filled);
+
+  const pctStr = total > 0 ? `${pct.toFixed(1)}%` : '?%';
+  const recvStr = formatBytes(received);
+  const totalStr = total > 0 ? formatBytes(total) : '?';
+
+  const labelPad = label.padEnd(12);
+  process.stderr.write(`\r  ${labelPad} [${bar}] ${pctStr.padStart(6)}  ${recvStr.padStart(8)} / ${totalStr.padStart(8)}`);
+}
+
+export function clearProgressLine(): void {
+  process.stderr.write('\r' + ' '.repeat(80) + '\r');
 }
 
 export async function downloadFileWithResume(
@@ -46,12 +68,10 @@ export async function downloadFileWithResume(
     const req = protocol.get(fileUrl, { headers }, async (response) => {
       const statusCode = response.statusCode!;
 
-      // Follow redirects manually if needed (https.get follows by default,
-      // but we keep this for safety)
       if (statusCode >= 301 && statusCode <= 308) {
         const location = response.headers.location;
         if (!location) {
-          reject(new DownloadError(`Redirección sin Location`, fileUrl, statusCode));
+          reject(new DownloadError(`Redireccion sin Location`, fileUrl, statusCode));
           return;
         }
         response.destroy();
@@ -105,7 +125,7 @@ export async function downloadFileWithResume(
           if (partial > 0) {
             process.stderr.write(
               `\nDescarga interrumpida, parcial guardado (${partial} bytes). ` +
-              `Reanudará en el próximo intento.\n`,
+              'Reanudara en el proximo intento.\n',
             );
           }
         }
@@ -120,7 +140,7 @@ export async function downloadFileWithResume(
 
     req.on('error', (err) => {
       reject(new DownloadError(
-        `Error de conexión: ${err.message}`,
+        `Error de conexion: ${err.message}`,
         fileUrl,
         undefined,
         err,

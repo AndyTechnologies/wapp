@@ -1,44 +1,19 @@
-import crypto from "node:crypto";
-import path from "node:path";
-/**
- * Estructura del archivo asconfig.json.
- */
-export interface AsConfig {
-  extends?: string;
-  entries?: string[];
-  options?: Record<string, any>;
-  targets?: Record<string, Record<string, any>>;
-}
-
-/**
- * Alias de resolución normalizado.
- */
-export interface ResolvedAlias {
-  find: string | RegExp;
-  replacement: string;
-}
-
-/**
- * Exportación parseada de un módulo AssemblyScript.
- */
-export interface ParsedExport {
-  name: string;
-  kind: 'function' | 'const' | 'class' | 'enum';
-}
+import crypto from 'node:crypto';
+import path from 'node:path';
+import type { ResolvedAlias, ParsedExport, AsConfig } from 'wapp-types';
 
 export function compareHash(a: string, b: string): boolean {
-  return a.localeCompare(b) === 0;
+  return a === b;
 }
 
 export function hashString(str: string): string {
-  return crypto.createHash("sha256").update(str).digest("hex");
+  return crypto.createHash('sha256').update(str).digest('hex');
 }
-
 
 export function resolveImportPath(
   importPath: string,
   importer: string,
-  aliases: ResolvedAlias[]
+  aliases: ResolvedAlias[],
 ): string {
   for (const alias of aliases) {
     if (typeof alias.find === 'string' && importPath.startsWith(alias.find)) {
@@ -57,7 +32,6 @@ export function resolveImportPath(
   return importPath;
 }
 
-
 export function mergeAsConfig(asConfig: AsConfig | null, target: 'debug' | 'release'): Record<string, any> {
   if (!asConfig) return {};
   const baseOptions = asConfig.options || {};
@@ -65,9 +39,6 @@ export function mergeAsConfig(asConfig: AsConfig | null, target: 'debug' | 'rele
   return { ...baseOptions, ...targetOptions };
 }
 
-/**
- * Parsea los exports desde el contenido del .d.ts generado.
- */
 export function parseExports(dtsContent: string): ParsedExport[] {
   const exports: ParsedExport[] = [];
   const regex = /export\s+(?:declare\s+)?(?:function|const|let|var|class|enum|abstract\s+class)\s+(\w+)/g;

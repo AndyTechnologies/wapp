@@ -8,22 +8,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '../..');
 const cliScript = path.join(projectRoot, 'dist', 'cli.js');
 const examplesDir = path.join(projectRoot, 'examples');
+const outDir = path.resolve(os.tmpdir(), 'wasm-linker-test-out');
 
-describe('wasm-linker', () => {
-  const outDir = path.resolve(os.tmpdir(), 'wasm-linker-test-out');
+beforeEach(() => {
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+});
 
-  beforeEach(() => {
-    if (!fs.existsSync(outDir)) {
-      fs.mkdirSync(outDir, { recursive: true });
-    }
-  });
-
-  afterEach(() => {
+afterEach(() => {
+  try {
     if (fs.existsSync(outDir)) {
       fs.rmSync(outDir, { recursive: true, force: true });
     }
-  });
+  } catch {
+    // ignore cleanup errors
+  }
+});
 
+describe('wasm-linker', () => {
   it('compila hello.wasm a ejecutable nativo y se ejecuta correctamente', () => {
     const wasmFile = path.join(examplesDir, 'hello.wasm');
     expect(fs.existsSync(wasmFile)).toBe(true);

@@ -4,7 +4,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { compileWasm } from 'wasm-compiler';
 import { createNativeApp } from 'wasm-linker';
-import { loadConfig, findConfig, writeConfig, resolveSourceFiles, isAssemblyScriptFile, WappConfig } from './config.js';
+import { loadConfig, findConfig, writeConfig, resolveSourceFiles, isAssemblyScriptFile } from './config.js';
+import type { WappConfig, CrossCompileTarget } from 'wapp-types';
+import { ConfigError } from 'wapp-types';
+
+const MIN_NODE_MAJOR = 18;
+const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+if (nodeMajor < MIN_NODE_MAJOR) {
+  console.error(`Error: wapp requiere Node.js v${MIN_NODE_MAJOR}+ (actual: ${process.version})`);
+  process.exit(1);
+}
 
 const program = new Command();
 
@@ -13,7 +22,6 @@ program
   .description('Orquestador para compilar proyectos AssemblyScript a ejecutables nativos')
   .version('1.0.0');
 
-// ── init ─────────────────────────────────────────────
 program
   .command('init')
   .description('Crea un archivo de configuracion wapp.json en el directorio actual')
@@ -22,6 +30,7 @@ program
   .option('--entry <name>', 'Funcion de entrada', '_start')
   .option('--wasi', 'Habilitar interfaz WASI', false)
   .option('--release', 'Modo release (optimizado)', false)
+  .option('--targets <json>', 'Configuracion de targets de cross-compilacion (JSON)')
   .action((options) => {
     const configPath = path.resolve('wapp.json');
     if (fs.existsSync(configPath)) {
@@ -39,11 +48,18 @@ program
       },
     };
 
+    if (options.targets) {
+      try {
+        config.targets = JSON.parse(options.targets) as CrossCompileTarget[];
+      } catch {
+        throw new ConfigError('El parametro --targets debe ser un JSON valido.');
+      }
+    }
+
     writeConfig(config, configPath);
     console.log(`Configuracion creada en ${configPath}`);
   });
 
-// ── build ─────────────────────────────────────────────
 program
   .command('build')
   .description('Compila AssemblyScript a WebAssembly y luego a ejecutable nativo')
@@ -51,6 +67,7 @@ program
   .option('-o, --output <file>', 'Ruta del ejecutable de salida (sobrescribe outDir)')
   .option('-e, --entry <name>', 'Funcion de entrada')
   .option('-t, --target <triple>', 'Tripleta de compilacion (ej. x86_64-linux-gnu)')
+  .option('--target-name <name>', 'Nombre del target en la configuracion multi-target')
   .option('--release', 'Modo release (optimizado, sin sourcemaps)')
   .option('--wasi', 'Habilitar interfaz WASI')
   .option('--runtime <name>', 'Runtime AssemblyScript (incremental, minimal, stub, full)')
@@ -60,6 +77,7 @@ program
   .option('--shrinkLevel <n>', 'Nivel de reduccion 0-2')
   .option('--zig-path <path>', 'Ruta personalizada al ejecutable de zig')
   .option('--wasmtime-path <path>', 'Ruta personalizada a la API C de Wasmtime')
+  .option('--all-targets', 'Compila para todos los targets definidos en la configuracion', false)
   .action(async (source, options) => {
     try {
       await buildCommand(source, options);
@@ -69,16 +87,52 @@ program
     }
   });
 
+async function buildForTarget(
+  config: WappConfig,
+  projectRoot: string,
+  sourceDir: string,
+  wasmFiles: string[],
+  targetConfig: { target?: string; output?: string; entry?: string; wasi?: boolean },
+  options: Record<string, any>,
+): Promise<void> {
+  const output = targetConfig.output
+    ? path.resolve(projectRoot, targetConfig.output)
+    : options.output
+      ? path.resolve(projectRoot, options.output)
+      : path.resolve(projectRoot, config.outDir!, 'output');
+
+  const outputDir = path.dirname(output);
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const entry = targetConfig.entry ?? options.entry ?? config.entry ?? '_start';
+  const wasi = targetConfig.wasi ?? options.wasi ?? config.wasi ?? false;
+
+  console.log(`\nCompilando ${wasmFiles.length} modulo(s) .wasm -> nativo (target: ${targetConfig.target || 'nativo'})...`);
+
+  await createNativeApp({
+    inputPaths: wasmFiles,
+    output,
+    target: targetConfig.target ?? options.target ?? config.target,
+    entry,
+    wasi,
+    moduleMatching: (options.moduleMatching ?? config.moduleMatching ?? 'name-only') as any,
+    zigPath: options.zigPath ?? config.zigPath,
+    wasmtimePath: options.wasmtimePath ?? config.wasmtimePath,
+  });
+
+  console.log(`Ejecutable creado: ${output}`);
+}
+
 async function buildCommand(source: string | undefined, options: Record<string, any>): Promise<void> {
   const config = loadConfig();
   const projectRoot = process.cwd();
 
-  // Determinar directorio fuente
   const sourceDir = source
     ? path.resolve(projectRoot, source)
     : path.resolve(projectRoot, config.sourceDir!);
 
-  // Resolver archivos AssemblyScript
   const asFiles = resolveSourceFiles(sourceDir);
   if (asFiles.length === 0) {
     throw new Error(`No se encontraron archivos AssemblyScript en '${sourceDir}'.`);
@@ -89,7 +143,6 @@ async function buildCommand(source: string | undefined, options: Record<string, 
     console.log(`  ${path.relative(projectRoot, f)}`);
   }
 
-  // Compilar cada archivo AS a wasm
   const wasmDir = path.join(projectRoot, '.wapp-cli', 'wasm');
   if (!fs.existsSync(wasmDir)) {
     fs.mkdirSync(wasmDir, { recursive: true });
@@ -153,31 +206,39 @@ async function buildCommand(source: string | undefined, options: Record<string, 
     }
   }
 
-  // Compilar .wasm a ejecutable nativo con wapp
-  const output = options.output
-    ? path.resolve(projectRoot, options.output)
-    : path.resolve(projectRoot, config.outDir!, 'output');
+  if (config.targets && config.targets.length > 0 && (options.allTargets || options.targetName)) {
+    const targetsToBuild = options.targetName
+      ? config.targets.filter((t: CrossCompileTarget) => t.name === options.targetName)
+      : options.allTargets
+        ? config.targets
+        : [];
 
-const outputDir = path.dirname(output);
-if (!fs.existsSync(outputDir)) {
-  fs.mkdirSync(outputDir, { recursive: true });
+    if (targetsToBuild.length === 0 && options.targetName) {
+      throw new Error(`Target '${options.targetName}' no encontrado en la configuracion.`);
+    }
+
+    for (const t of targetsToBuild) {
+      await buildForTarget(config, projectRoot, sourceDir, wasmFiles, {
+        target: t.triple,
+        output: t.output,
+        entry: t.entry,
+        wasi: t.wasi,
+      }, options);
+    }
+  } else if (options.target) {
+    await buildForTarget(config, projectRoot, sourceDir, wasmFiles, {
+      target: options.target,
+      output: options.output,
+      entry: options.entry,
+      wasi: options.wasi,
+    }, options);
+  } else {
+    await buildForTarget(config, projectRoot, sourceDir, wasmFiles, {
+      output: options.output,
+      entry: options.entry,
+      wasi: options.wasi,
+    }, options);
+  }
 }
 
-  console.log(`\nCompilando ${wasmFiles.length} modulo(s) .wasm a ejecutable nativo...`);
-
-  await createNativeApp({
-    inputPaths: wasmFiles,
-    output,
-    target: options.target ?? config.target,
-    entry: options.entry ?? config.entry ?? '_start',
-    wasi: options.wasi ?? config.wasi ?? false,
-    moduleMatching: (options.moduleMatching ?? config.moduleMatching ?? 'name-only') as any,
-    zigPath: options.zigPath ?? config.zigPath,
-    wasmtimePath: options.wasmtimePath ?? config.wasmtimePath,
-  });
-
-  console.log(`\nEjecutable creado: ${output}`);
-}
-
-// ── Parsing final ────────────────────────────────────
 program.parse(process.argv);

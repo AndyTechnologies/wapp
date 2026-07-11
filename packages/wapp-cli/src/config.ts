@@ -1,24 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { glob } from 'glob';
-
-export interface WappConfig {
-  sourceDir?: string;
-  outDir?: string;
-  entry?: string;
-  wasi?: boolean;
-  moduleMatching?: 'name-only' | 'file-name';
-  target?: string;
-  zigPath?: string;
-  wasmtimePath?: string;
-  compiler?: {
-    release?: boolean;
-    runtime?: 'incremental' | 'minimal' | 'stub' | 'full';
-    optimizeLevel?: number;
-    shrinkLevel?: number;
-    sourceMap?: boolean;
-  };
-}
+import type { WappConfig, CrossCompileTarget } from 'wapp-types';
 
 export const DEFAULT_CONFIG: WappConfig = {
   sourceDir: 'src/assembly',
@@ -26,6 +9,7 @@ export const DEFAULT_CONFIG: WappConfig = {
   entry: '_start',
   wasi: false,
   moduleMatching: 'name-only',
+  target: undefined,
   compiler: {
     release: false,
     runtime: 'incremental',

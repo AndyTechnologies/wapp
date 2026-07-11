@@ -3,6 +3,9 @@ import { Command } from 'commander';
 import { createNativeApp } from './index.js';
 import { runSetup, checkSetupStatus } from './setup.js';
 import { clearCache, getCacheInfo } from './cache.js';
+import { LinkerError } from 'wapp-types';
+import fs from 'fs';
+import path from 'path';
 
 const program = new Command();
 
@@ -11,16 +14,15 @@ program
   .description('Convierte proyectos WebAssembly en ejecutables nativos autocontenidos')
   .version('1.0.0');
 
-// ── build ──────────────────────────────────────────────────
 program
   .command('build')
   .description('Compila uno o varios archivos .wasm en un ejecutable nativo')
-  .argument('<input>', 'Carpeta o archivos .wasm (múltiples separados por espacio)')
+  .argument('<input>', 'Carpeta o archivos .wasm (multiples separados por espacio)')
   .requiredOption('-o, --output <file>', 'Nombre del ejecutable de salida')
-  .option('-t, --target <triple>', 'Tripleta de compilación (ej. x86_64-linux-gnu, aarch64-macos)')
-  .option('-e, --entry <name>', 'Punto de entrada (función exportada, por defecto _start)', '_start')
+  .option('-t, --target <triple>', 'Tripleta de compilacion (ej. x86_64-linux-gnu, aarch64-macos)')
+  .option('-e, --entry <name>', 'Punto de entrada (funcion exportada, por defecto _start)', '_start')
   .option('--wasi', 'Habilitar interfaz WASI', false)
-  .option('--module-matching <strategy>', 'Estrategia de resolución: name-only (defecto) o file-name', 'name-only')
+  .option('--module-matching <strategy>', 'Estrategia de resolucion: name-only (defecto) o file-name', 'name-only')
   .option('--zig-path <path>', 'Ruta personalizada al ejecutable de zig')
   .option('--wasmtime-path <path>', 'Ruta personalizada a la API C de Wasmtime (include/lib)')
   .action(async (input: string, options) => {
@@ -42,11 +44,71 @@ program
     }
   });
 
-// ── setup ──────────────────────────────────────────────────
+program
+  .command('watch')
+  .description('Vigila archivos .wasm y recompila automaticamente el ejecutable nativo')
+  .argument('<input>', 'Carpeta o archivos .wasm')
+  .requiredOption('-o, --output <file>', 'Nombre del ejecutable de salida')
+  .option('-t, --target <triple>', 'Tripleta de compilacion')
+  .option('-e, --entry <name>', 'Punto de entrada', '_start')
+  .option('--wasi', 'Habilitar interfaz WASI', false)
+  .option('--module-matching <strategy>', 'Estrategia de resolucion', 'name-only')
+  .option('--zig-path <path>', 'Ruta personalizada al ejecutable de zig')
+  .option('--wasmtime-path <path>', 'Ruta personalizada a la API C de Wasmtime')
+  .action(async (input: string, options) => {
+    const inputPaths = input.split(' ').map(p => path.resolve(p));
+
+    const doBuild = async () => {
+      try {
+        console.log('\n--- Cambio detectado, recompilando... ---');
+        await createNativeApp({
+          inputPaths,
+          output: path.resolve(options.output),
+          target: options.target,
+          entry: options.entry,
+          wasi: options.wasi,
+          moduleMatching: options.moduleMatching as 'name-only' | 'file-name',
+          zigPath: options.zigPath,
+          wasmtimePath: options.wasmtimePath,
+        });
+        console.log(`Ejecutable creado: ${options.output}`);
+      } catch (err: any) {
+        console.error(`\nError: ${err.message}`);
+      }
+    };
+
+    const watchedDirs = new Set<string>();
+    for (const p of inputPaths) {
+      if (fs.existsSync(p)) {
+        if (fs.statSync(p).isDirectory()) {
+          watchedDirs.add(p);
+        } else {
+          watchedDirs.add(path.dirname(p));
+        }
+      }
+    }
+
+    console.log(`Vigilando ${watchedDirs.size} directorios por cambios en .wasm...`);
+    console.log('Esperando cambios... (Ctrl+C para salir)\n');
+
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    for (const dir of watchedDirs) {
+      fs.watch(dir, { recursive: true }, (eventType, filename) => {
+        if (filename && filename.endsWith('.wasm')) {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(doBuild, 500);
+        }
+      });
+    }
+
+    await doBuild();
+    await new Promise(() => {});
+  });
+
 program
   .command('setup')
   .description('Descarga y verifica las dependencias necesarias (Zig + Wasmtime)')
-  .option('--ignore-cache', 'Ignora la caché y fuerza la descarga completa', false)
+  .option('--ignore-cache', 'Ignora la cache y fuerza la descarga completa', false)
   .action(async (options) => {
     try {
       await runSetup({ ignoreCache: options.ignoreCache });
@@ -59,22 +121,21 @@ program
     }
   });
 
-// ── cache ──────────────────────────────────────────────────
 const cacheCmd = program
   .command('cache')
-  .description('Gestiona la caché de descargas de Wapp');
+  .description('Gestiona la cache de descargas de Wapp');
 
 cacheCmd
   .command('info')
-  .description('Muestra información de la caché')
+  .description('Muestra informacion de la cache')
   .action(async () => {
     const info = await getCacheInfo();
     if (!info.exists) {
-      console.log('No hay caché de descargas.');
+      console.log('No hay cache de descargas.');
       return;
     }
     console.log(`Ruta: ${info.path}`);
-    console.log(`Tamaño: ${info.humanSize} (${info.size} bytes)`);
+    console.log(`Tamano: ${info.humanSize} (${info.size} bytes)`);
     console.log('Contenido:');
     for (const entry of info.entries) {
       console.log(`  ${entry}`);
@@ -83,12 +144,11 @@ cacheCmd
 
 cacheCmd
   .command('clear')
-  .description('Elimina toda la caché de descargas')
+  .description('Elimina toda la cache de descargas')
   .action(async () => {
     await clearCache();
   });
 
-// ── status (alias rápido de "setup" en modo check) ────────
 program
   .command('status')
   .description('Muestra el estado de las dependencias')
@@ -98,7 +158,7 @@ program
       console.log('\nEstado de dependencias:\n');
       console.log(`Zig:      ${status.zig.status === 'ok' ? 'OK' : 'FALTA'} ${status.zig.path ? `(${status.zig.path})` : ''}${status.zig.error ? ` - ${status.zig.error}` : ''}`);
       console.log(`Wasmtime: ${status.wasmtime.status === 'ok' ? 'OK' : 'FALTA'} ${status.wasmtime.path ? `(${status.wasmtime.path})` : ''}${status.wasmtime.error ? ` - ${status.wasmtime.error}` : ''}`);
-      console.log(`Caché:    ${status.cacheSize}`);
+      console.log(`Cache:    ${status.cacheSize}`);
     } catch (err: any) {
       console.error(`\nError: ${err.message}`);
       process.exit(1);
