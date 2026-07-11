@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { logger } from 'wapp-types';
 import { createNativeApp } from './index.js';
 import { runSetup, checkSetupStatus } from './setup.js';
 import { clearCache, getCacheInfo } from './cache.js';
@@ -37,9 +38,9 @@ program
         zigPath: options.zigPath,
         wasmtimePath: options.wasmtimePath,
       });
-      console.log(`Ejecutable creado: ${options.output}`);
+      logger.success(`Ejecutable creado: ${options.output}`);
     } catch (err: any) {
-      console.error(`\nError: ${err.message}`);
+      logger.error(`\nError: ${err.message}`);
       process.exit(1);
     }
   });
@@ -56,11 +57,14 @@ program
   .option('--zig-path <path>', 'Ruta personalizada al ejecutable de zig')
   .option('--wasmtime-path <path>', 'Ruta personalizada a la API C de Wasmtime')
   .action(async (input: string, options) => {
+    process.on('SIGINT', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+    process.on('SIGTERM', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+
     const inputPaths = input.split(' ').map(p => path.resolve(p));
 
     const doBuild = async () => {
       try {
-        console.log('\n--- Cambio detectado, recompilando... ---');
+        logger.step('\nCambio detectado, recompilando...');
         await createNativeApp({
           inputPaths,
           output: path.resolve(options.output),
@@ -71,9 +75,9 @@ program
           zigPath: options.zigPath,
           wasmtimePath: options.wasmtimePath,
         });
-        console.log(`Ejecutable creado: ${options.output}`);
+        logger.success(`Ejecutable creado: ${options.output}`);
       } catch (err: any) {
-        console.error(`\nError: ${err.message}`);
+        logger.error(`\nError: ${err.message}`);
       }
     };
 
@@ -88,8 +92,8 @@ program
       }
     }
 
-    console.log(`Vigilando ${watchedDirs.size} directorios por cambios en .wasm...`);
-    console.log('Esperando cambios... (Ctrl+C para salir)\n');
+    logger.info(`Vigilando ${watchedDirs.size} directorios por cambios en .wasm...`);
+    logger.detail('Esperando cambios... (Ctrl+C para salir)\n');
 
     let debounceTimer: ReturnType<typeof setTimeout>;
     for (const dir of watchedDirs) {
@@ -113,9 +117,9 @@ program
     try {
       await runSetup({ ignoreCache: options.ignoreCache });
     } catch (err: any) {
-      console.error(`\nError en setup: ${err.message}`);
+      logger.error(`\nError en setup: ${err.message}`);
       if (err.stack) {
-        console.error(`\n${err.stack}`);
+        logger.detail(`\n${err.stack}`);
       }
       process.exit(1);
     }
@@ -131,14 +135,14 @@ cacheCmd
   .action(async () => {
     const info = await getCacheInfo();
     if (!info.exists) {
-      console.log('No hay cache de descargas.');
+      logger.info('No hay cache de descargas.');
       return;
     }
-    console.log(`Ruta: ${info.path}`);
-    console.log(`Tamano: ${info.humanSize} (${info.size} bytes)`);
-    console.log('Contenido:');
+    logger.info(`Ruta: ${info.path}`);
+    logger.info(`Tamano: ${info.humanSize} (${info.size} bytes)`);
+    logger.info('Contenido:');
     for (const entry of info.entries) {
-      console.log(`  ${entry}`);
+      logger.info(`  ${entry}`);
     }
   });
 
@@ -155,12 +159,12 @@ program
   .action(async () => {
     try {
       const status = await checkSetupStatus();
-      console.log('\nEstado de dependencias:\n');
-      console.log(`Zig:      ${status.zig.status === 'ok' ? 'OK' : 'FALTA'} ${status.zig.path ? `(${status.zig.path})` : ''}${status.zig.error ? ` - ${status.zig.error}` : ''}`);
-      console.log(`Wasmtime: ${status.wasmtime.status === 'ok' ? 'OK' : 'FALTA'} ${status.wasmtime.path ? `(${status.wasmtime.path})` : ''}${status.wasmtime.error ? ` - ${status.wasmtime.error}` : ''}`);
-      console.log(`Cache:    ${status.cacheSize}`);
+      logger.step('\nEstado de dependencias:\n');
+      logger.info(`Zig:      ${status.zig.status === 'ok' ? 'OK' : 'FALTA'} ${status.zig.path ? `(${status.zig.path})` : ''}${status.zig.error ? ` - ${status.zig.error}` : ''}`);
+      logger.info(`Wasmtime: ${status.wasmtime.status === 'ok' ? 'OK' : 'FALTA'} ${status.wasmtime.path ? `(${status.wasmtime.path})` : ''}${status.wasmtime.error ? ` - ${status.wasmtime.error}` : ''}`);
+      logger.info(`Cache:    ${status.cacheSize}`);
     } catch (err: any) {
-      console.error(`\nError: ${err.message}`);
+      logger.error(`\nError: ${err.message}`);
       process.exit(1);
     }
   });

@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { ZigError } from 'wapp-types';
+import { ZigError, logger } from 'wapp-types';
 
 export interface CompileOptions {
   source: string;
@@ -26,12 +26,17 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
     args.push('-framework', 'Security', '-framework', 'Foundation');
   }
 
-  console.log(`Compilando: ${zigExe} ${args.join(' ')}`);
+  logger.detail(`Compilando: ${zigExe} ${args.join(' ')}`);
   return new Promise<void>((resolve, reject) => {
-    const proc = spawn(zigExe, args, { stdio: 'inherit' });
+    const proc = spawn(zigExe, args, { stdio: ['inherit', 'inherit', 'pipe'] });
+    const stderrChunks: Buffer[] = [];
+    proc.stderr!.on('data', (chunk: Buffer) => stderrChunks.push(chunk));
     proc.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new ZigError(`zig c++ termino con codigo ${code}`, { exitCode: code }));
+      else {
+        const stderr = Buffer.concat(stderrChunks).toString('utf-8').trim();
+        reject(new ZigError(`zig c++ termino con codigo ${code}`, { exitCode: code, stderr }));
+      }
     });
     proc.on('error', (err) => reject(new ZigError(`Error al ejecutar zig: ${err.message}`, { causeMessage: err.message })));
   });

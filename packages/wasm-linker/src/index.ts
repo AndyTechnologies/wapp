@@ -1,3 +1,4 @@
+import { logger } from 'wapp-types';
 import { glob } from 'glob';
 import path from 'path';
 import fs from 'fs';
@@ -31,15 +32,22 @@ export async function createNativeApp(options: NativeAppOptions): Promise<void> 
     throw new LinkerError('No se encontraron archivos .wasm.');
   }
 
-  console.log(`Modulos encontrados: ${wasmFiles.map(f => path.basename(f)).join(', ')}`);
+  logger.info(`Modulos encontrados: ${wasmFiles.map(f => path.basename(f)).join(', ')}`);
+
+  const zigPromise = options.zigPath
+    ? Promise.resolve(options.zigPath)
+    : ensureZigAvailable();
+  const wasmtimePromise = options.wasmtimePath
+    ? Promise.resolve({ includeDir: path.join(options.wasmtimePath, 'include'), libPath: path.join(options.wasmtimePath, 'lib', getLibName()) })
+    : ensureWasmtimeAvailable();
 
   const modules = await readWasmModules(wasmFiles);
 
   const resolved = resolveDependencies(modules, options.moduleMatching);
 
-  console.log('Dependencias resueltas. Orden de instanciacion:');
+  logger.info('Dependencias resueltas. Orden de instanciacion:');
   resolved.order.forEach((mod, idx) => {
-    console.log(`  ${idx}: ${path.basename(mod.module.fileName)} (exports: ${mod.module.exports.map(e => e.name).join(', ')})`);
+    logger.detail(`  ${idx}: ${path.basename(mod.module.fileName)} (exports: ${mod.module.exports.map(e => e.name).join(', ')})`);
   });
 
   validateEntryExport(resolved, options.entry);
@@ -52,12 +60,10 @@ export async function createNativeApp(options: NativeAppOptions): Promise<void> 
   }
   const cFilePath = path.join(buildDir, 'wasm_bundle.cpp');
   fs.writeFileSync(cFilePath, cCode, 'utf-8');
-  console.log(`Codigo C++ generado en ${cFilePath}`);
+  logger.detail(`Codigo C++ generado en ${cFilePath}`);
 
-  const zigExe = options.zigPath ? options.zigPath : await ensureZigAvailable();
-  const wasmtimeLib = options.wasmtimePath
-    ? { includeDir: path.join(options.wasmtimePath, 'include'), libPath: path.join(options.wasmtimePath, 'lib', getLibName()) }
-    : await ensureWasmtimeAvailable();
+  const zigExe = await zigPromise;
+  const wasmtimeLib = await wasmtimePromise;
 
   await compileWithZig(zigExe, {
     source: cFilePath,

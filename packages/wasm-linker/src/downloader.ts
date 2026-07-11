@@ -2,50 +2,37 @@ import fs from 'fs';
 import https from 'https';
 import http from 'http';
 import { pipeline } from 'stream/promises';
-import { DownloadError } from 'wapp-types';
+import { logger, formatBytes, DownloadError } from 'wapp-types';
+import ora, { type Ora } from 'ora';
 
 export interface DownloadOptions {
   ignoreCache?: boolean;
+  label?: string;
   onProgress?: (received: number, total: number) => void;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  const val = bytes / Math.pow(1024, i);
-  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-const progressTimestamps = new Map<string, number>();
-
-export function renderProgressBar(label: string, received: number, total: number): void {
-  const now = Date.now();
-  const last = progressTimestamps.get(label) || 0;
-  if (now - last < 100) return;
-  progressTimestamps.set(label, now);
-
-  const barWidth = 30;
-  const pct = total > 0 ? (received / total) * 100 : 0;
-  const filled = Math.round((pct / 100) * barWidth);
-  const bar = '='.repeat(filled) + '-'.repeat(barWidth - filled);
-
-  const pctStr = total > 0 ? `${pct.toFixed(1)}%` : '?%';
-  const recvStr = formatBytes(received);
-  const totalStr = total > 0 ? formatBytes(total) : '?';
-
-  const labelPad = label.padEnd(12);
-  process.stderr.write(`\r  ${labelPad} [${bar}] ${pctStr.padStart(6)}  ${recvStr.padStart(8)} / ${totalStr.padStart(8)}`);
-}
-
-export function clearProgressLine(): void {
-  process.stderr.write('\r' + ' '.repeat(80) + '\r');
 }
 
 export async function downloadFileWithResume(
   fileUrl: string,
   dest: string,
   options?: DownloadOptions,
+): Promise<void> {
+  const label = options?.label || 'Descargando';
+  const spinner = ora({ text: label, color: 'cyan' }).start();
+
+  try {
+    await doDownload(fileUrl, dest, options, spinner);
+    spinner.succeed(`${label} completada`);
+  } catch (err) {
+    spinner.fail(`${label} fallida`);
+    throw err;
+  }
+}
+
+async function doDownload(
+  fileUrl: string,
+  dest: string,
+  options?: DownloadOptions,
+  spinner?: Ora,
 ): Promise<void> {
   const partPath = dest + '.part';
   const ignoreCache = options?.ignoreCache ?? false;
@@ -75,7 +62,8 @@ export async function downloadFileWithResume(
           return;
         }
         response.destroy();
-        resolve(downloadFileWithResume(location, dest, options));
+        spinner!.text = `${options?.label || 'Descargando'} (redirigiendo...)`;
+        resolve(doDownload(location, dest, options, spinner));
         return;
       }
 
@@ -111,6 +99,10 @@ export async function downloadFileWithResume(
 
       response.on('data', (chunk: Buffer) => {
         received += chunk.length;
+        if (totalBytes > 0) {
+          const pct = ((received / totalBytes) * 100).toFixed(1);
+          spinner!.text = `${options?.label || 'Descargando'} ${pct}% (${formatBytes(received)} / ${formatBytes(totalBytes)})`;
+        }
         onProgress?.(received, totalBytes || received);
       });
 
@@ -123,10 +115,7 @@ export async function downloadFileWithResume(
         if (fs.existsSync(partPath)) {
           const partial = fs.statSync(partPath).size;
           if (partial > 0) {
-            process.stderr.write(
-              `\nDescarga interrumpida, parcial guardado (${partial} bytes). ` +
-              'Reanudara en el proximo intento.\n',
-            );
+            logger.warn(`Descarga interrumpida, parcial guardado (${partial} bytes). Reanudara en el proximo intento.`);
           }
         }
         reject(new DownloadError(

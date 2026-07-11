@@ -1,8 +1,8 @@
+import { logger } from 'wapp-types';
 import { ensureZigAvailable, getZigCachedPath, zigDownloadInfo } from './zig-downloader.js';
 import { ensureWasmtimeAvailable, getWasmtimeCachedPaths, wasmtimeDownloadInfo } from './wasmtime-dl.js';
 import { clearCache, getCacheInfo } from './cache.js';
 import type { DownloadOptions } from './downloader.js';
-import { renderProgressBar, clearProgressLine } from './downloader.js';
 
 export interface SetupOptions {
   ignoreCache?: boolean;
@@ -18,36 +18,32 @@ export async function runSetup(options?: SetupOptions): Promise<void> {
   const ignoreCache = options?.ignoreCache ?? false;
 
   if (ignoreCache) {
-    console.log('Ignorando cache existente, forzando descarga...');
+    logger.info('Ignorando cache existente, forzando descarga...');
     await clearCache();
   }
 
-  console.log('');
-
   const cachedZig = getZigCachedPath();
   if (cachedZig && !ignoreCache) {
-    console.log(`  [Zig]        ${cachedZig} — OK`);
+    logger.success(`Zig: ${cachedZig} — OK`);
   } else {
     const info = zigDownloadInfo();
-    console.log(`  [Zig]        Descargando ${info.version}...`);
+    logger.step(`Descargando Zig ${info.version}...`);
 
     const dlOpts: DownloadOptions = {
       ignoreCache,
-      onProgress: (recv, total) => renderProgressBar('[Zig]', recv, total),
+      label: 'Zig',
     };
 
     try {
       const path = await ensureZigAvailable(dlOpts);
-      clearProgressLine();
-      console.log(`  [Zig]        ${path} — OK`);
+      logger.success(`Zig: ${path} — OK`);
     } catch (err: any) {
-      clearProgressLine();
       const msg = err.cause ? `${err.message} (causa: ${err.cause.message})` : err.message;
-      console.error(`  [Zig]        ERROR — ${msg}`);
+      logger.error(`Zig: ERROR — ${msg}`);
       if (err.statusCode) {
-        console.error(`                URL: ${err.url}`);
+        logger.error(`URL: ${err.url}`);
         if (err.statusCode === 404) {
-          console.error('                Sugerencia: La version especificada puede no existir.');
+          logger.warn('Sugerencia: La version especificada puede no existir.');
         }
       }
       throw err;
@@ -56,35 +52,33 @@ export async function runSetup(options?: SetupOptions): Promise<void> {
 
   const cachedWt = getWasmtimeCachedPaths();
   if (cachedWt && !ignoreCache) {
-    console.log(`  [Wasmtime]   ${cachedWt.libPath} — OK`);
+    logger.success(`Wasmtime: ${cachedWt.libPath} — OK`);
   } else {
     const info = wasmtimeDownloadInfo();
-    console.log(`  [Wasmtime]   Descargando ${info.version}...`);
+    logger.step(`Descargando Wasmtime ${info.version}...`);
 
     const dlOpts: DownloadOptions = {
       ignoreCache,
-      onProgress: (recv, total) => renderProgressBar('[Wasmtime]', recv, total),
+      label: 'Wasmtime',
     };
 
     try {
       const paths = await ensureWasmtimeAvailable(dlOpts);
-      clearProgressLine();
-      console.log(`  [Wasmtime]   ${paths.libPath} — OK`);
+      logger.success(`Wasmtime: ${paths.libPath} — OK`);
     } catch (err: any) {
-      clearProgressLine();
       const msg = err.cause ? `${err.message} (causa: ${err.cause.message})` : err.message;
-      console.error(`  [Wasmtime]   ERROR — ${msg}`);
+      logger.error(`Wasmtime: ERROR — ${msg}`);
       if (err.statusCode) {
-        console.error(`                URL: ${err.url}`);
+        logger.error(`URL: ${err.url}`);
         if (err.statusCode === 302) {
-          console.error('                Sugerencia: Puede haber una redireccion no seguida automaticamente.');
+          logger.warn('Sugerencia: Puede haber una redireccion no seguida automaticamente.');
         }
       }
       throw err;
     }
   }
 
-  console.log('\n  Setup completado.');
+  logger.success('Setup completado.');
 }
 
 export async function checkSetupStatus(): Promise<SetupStatus> {

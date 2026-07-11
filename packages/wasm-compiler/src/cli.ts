@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { logger } from 'wapp-types';
 import { glob } from 'glob';
 import path from 'path';
 import fs from 'fs';
@@ -113,7 +114,7 @@ async function buildCommand(files: string[], options: {
     shrinkLevel: options.shrinkLevel ? parseInt(options.shrinkLevel, 10) : undefined,
   };
 
-  console.log(`Compilando ${inputFiles.length} archivos...`);
+  logger.info(`Compilando ${inputFiles.length} archivos...`);
 
   let results: { file: string; success: boolean; output?: string; error?: string }[];
 
@@ -127,25 +128,25 @@ async function buildCommand(files: string[], options: {
       const result = await compileSingleFile(file, compileOpts);
       results.push(result);
       if (result.success) {
-        console.log(`  OK: ${result.file} -> ${result.output}${result.output ? ` (${fs.statSync(result.output).size} bytes)` : ''}`);
+        logger.success(`OK: ${result.file} -> ${result.output}${result.output ? ` (${fs.statSync(result.output).size} bytes)` : ''}`);
       } else {
-        console.log(`  FAIL: ${result.file} — ${result.error}`);
+        logger.error(`FAIL: ${result.file} — ${result.error}`);
       }
     }
   }
 
   for (const r of results) {
     if (r.success) {
-      console.log(`  OK: ${r.file} -> ${r.output}`);
+      logger.success(`OK: ${r.file} -> ${r.output}`);
     } else {
-      console.log(`  FAIL: ${r.file} — ${r.error}`);
+      logger.error(`FAIL: ${r.file} — ${r.error}`);
     }
   }
 
   const ok = results.filter(r => r.success).length;
   const fail = results.filter(r => !r.success).length;
 
-  console.log(`\nResumen: ${ok} compilados, ${fail} fallos`);
+  logger.info(`\nResumen: ${ok} compilados, ${fail} fallos`);
 
   process.exit(fail > 0 ? 1 : 0);
 }
@@ -158,6 +159,9 @@ async function watchCommand(files: string[], options: {
   shrinkLevel: string;
   sourcemap: boolean;
 }): Promise<void> {
+  process.on('SIGINT', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+  process.on('SIGTERM', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+
   const outDir = path.resolve(options.outDir);
   const isDev = !options.release;
 
@@ -167,39 +171,53 @@ async function watchCommand(files: string[], options: {
 
   const inputFiles = await resolveInputFiles(files);
 
+  const fileMtimes = new Map<string, number>();
+  for (const f of inputFiles) {
+    try {
+      fileMtimes.set(f, fs.statSync(f).mtimeMs);
+    } catch {
+      // ignore
+    }
+  }
+
   const watchedDirs = new Set<string>();
   for (const f of inputFiles) {
     watchedDirs.add(path.dirname(f));
   }
 
-  console.log(`Vigilando ${inputFiles.length} archivos en ${watchedDirs.size} directorios...`);
-  console.log('Esperando cambios... (Ctrl+C para salir)\n');
+  logger.info(`Vigilando ${inputFiles.length} archivos en ${watchedDirs.size} directorios...`);
+  logger.detail('Esperando cambios... (Ctrl+C para salir)\n');
 
-  const debouncedCompile = debounce(async () => {
-    console.log('\n--- Cambio detectado, recompilando... ---\n');
+  const debouncedCompile = debounce(async (changedFile: string) => {
+    logger.step(`\nCambio detectado en ${path.relative(process.cwd(), changedFile)}, recompilando...\n`);
     try {
-      const results = await Promise.all(inputFiles.map(f =>
-        compileSingleFile(f, { outDir, isDev, sourceMap: options.sourcemap, runtime: options.runtime, optimizeLevel: parseInt(options.optimizeLevel, 10) })
-      ));
-      for (const r of results) {
-        if (r.success) {
-          console.log(`  OK: ${r.file} -> ${r.output}`);
-        } else {
-          console.log(`  FAIL: ${r.file} — ${r.error}`);
-        }
+      const result = await compileSingleFile(changedFile, { outDir, isDev, sourceMap: options.sourcemap, runtime: options.runtime, optimizeLevel: parseInt(options.optimizeLevel, 10) });
+      if (result.success) {
+        logger.success(`OK: ${result.file} -> ${result.output}`);
+      } else {
+        logger.error(`FAIL: ${result.file} — ${result.error}`);
       }
     } catch (err: any) {
-      console.log(`  ERROR: ${err.message}`);
+      logger.error(`ERROR: ${err.message}`);
     }
-    console.log('\nEsperando cambios... (Ctrl+C para salir)\n');
+    try {
+      fileMtimes.set(changedFile, fs.statSync(changedFile).mtimeMs);
+    } catch {
+      // ignore
+    }
+    logger.detail('\nEsperando cambios... (Ctrl+C para salir)\n');
   }, 300);
 
   for (const dir of watchedDirs) {
     fs.watch(dir, { recursive: true }, (eventType, filename) => {
       if (filename && (filename.endsWith('.wasm.ts') || filename.endsWith('.asm.ts') || filename.endsWith('.ts') || filename.endsWith('.asm'))) {
         const fullPath = path.join(dir, filename);
-        if (inputFiles.includes(fullPath) || inputFiles.some(f => path.basename(f) === filename)) {
-          debouncedCompile();
+        let targetFile = inputFiles.includes(fullPath) ? fullPath : undefined;
+        if (!targetFile) {
+          targetFile = inputFiles.find(f => path.basename(f) === filename);
+        }
+        if (targetFile) {
+          debouncedCompile(targetFile);
         }
       }
     });
@@ -238,7 +256,7 @@ program
     try {
       await buildCommand(files, options);
     } catch (err) {
-      console.log(`\nError: ${(err as Error).message}`);
+      logger.error(`\nError: ${(err as Error).message}`);
       process.exit(1);
     }
   });
@@ -257,7 +275,7 @@ program
     try {
       await watchCommand(files, options);
     } catch (err) {
-      console.log(`\nError: ${(err as Error).message}`);
+      logger.error(`\nError: ${(err as Error).message}`);
       process.exit(1);
     }
   });

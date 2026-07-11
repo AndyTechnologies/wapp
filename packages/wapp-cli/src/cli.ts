@@ -5,13 +5,17 @@ import path from 'node:path';
 import { compileWasm } from 'wasm-compiler';
 import { createNativeApp } from 'wasm-linker';
 import { loadConfig, findConfig, writeConfig, resolveSourceFiles, isAssemblyScriptFile } from './config.js';
+import { installPackage } from './install.js';
+import { runTests } from './test.js';
+import { runBenchmark } from './bench.js';
 import type { WappConfig, CrossCompileTarget } from 'wapp-types';
-import { ConfigError } from 'wapp-types';
+import { ConfigError, logger } from 'wapp-types';
+import pc from 'picocolors';
 
 const MIN_NODE_MAJOR = 18;
 const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
 if (nodeMajor < MIN_NODE_MAJOR) {
-  console.error(`Error: wapp requiere Node.js v${MIN_NODE_MAJOR}+ (actual: ${process.version})`);
+  logger.error(`Error: wapp requiere Node.js v${MIN_NODE_MAJOR}+ (actual: ${process.version})`);
   process.exit(1);
 }
 
@@ -34,7 +38,7 @@ program
   .action((options) => {
     const configPath = path.resolve('wapp.json');
     if (fs.existsSync(configPath)) {
-      console.error('Ya existe un archivo wapp.json en este directorio.');
+      logger.error('Ya existe un archivo wapp.json en este directorio.');
       process.exit(1);
     }
 
@@ -57,7 +61,7 @@ program
     }
 
     writeConfig(config, configPath);
-    console.log(`Configuracion creada en ${configPath}`);
+    logger.success(`Configuracion creada en ${configPath}`);
   });
 
 program
@@ -82,7 +86,7 @@ program
     try {
       await buildCommand(source, options);
     } catch (err: any) {
-      console.error(`\nError: ${err.message}`);
+      logger.error(`\nError: ${err.message}`);
       process.exit(1);
     }
   });
@@ -109,7 +113,7 @@ async function buildForTarget(
   const entry = targetConfig.entry ?? options.entry ?? config.entry ?? '_start';
   const wasi = targetConfig.wasi ?? options.wasi ?? config.wasi ?? false;
 
-  console.log(`\nCompilando ${wasmFiles.length} modulo(s) .wasm -> nativo (target: ${targetConfig.target || 'nativo'})...`);
+  logger.info(`\nCompilando ${wasmFiles.length} modulo(s) .wasm -> nativo (target: ${targetConfig.target || 'nativo'})...`);
 
   await createNativeApp({
     inputPaths: wasmFiles,
@@ -122,10 +126,13 @@ async function buildForTarget(
     wasmtimePath: options.wasmtimePath ?? config.wasmtimePath,
   });
 
-  console.log(`Ejecutable creado: ${output}`);
+  logger.success(`Ejecutable creado: ${output}`);
 }
 
 async function buildCommand(source: string | undefined, options: Record<string, any>): Promise<void> {
+  process.on('SIGINT', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+  process.on('SIGTERM', () => { logger.info('\nDeteniendo...'); process.exit(0); });
+
   const config = loadConfig();
   const projectRoot = process.cwd();
 
@@ -138,9 +145,9 @@ async function buildCommand(source: string | undefined, options: Record<string, 
     throw new Error(`No se encontraron archivos AssemblyScript en '${sourceDir}'.`);
   }
 
-  console.log(`Archivos AssemblyScript encontrados: ${asFiles.length}`);
+  logger.info(`Archivos AssemblyScript encontrados: ${asFiles.length}`);
   for (const f of asFiles) {
-    console.log(`  ${path.relative(projectRoot, f)}`);
+    logger.detail(`  ${path.relative(projectRoot, f)}`);
   }
 
   const wasmDir = path.join(projectRoot, '.wapp-cli', 'wasm');
@@ -162,7 +169,7 @@ async function buildCommand(source: string | undefined, options: Record<string, 
       const sourceCode = fs.readFileSync(file, 'utf-8');
       const relativeName = path.relative(projectRoot, file);
 
-      console.log(`\nCompilando ${relativeName} a WebAssembly...`);
+      logger.step(`\nCompilando ${relativeName} a WebAssembly...`);
 
       const result = await compileWasm({
         fileName: file,
@@ -196,13 +203,13 @@ async function buildCommand(source: string | undefined, options: Record<string, 
       }
 
       wasmFiles.push(wasmOut);
-      console.log(`  -> ${path.relative(projectRoot, wasmOut)} (${result.wasmBytes.length} bytes)`);
+      logger.success(`  -> ${path.relative(projectRoot, wasmOut)} (${result.wasmBytes.length} bytes)`);
     } else if (file.endsWith('.wasm')) {
       const relativeName = path.relative(projectRoot, file);
       const targetPath = path.join(wasmDir, path.basename(file));
       fs.copyFileSync(file, targetPath);
       wasmFiles.push(targetPath);
-      console.log(`  ${relativeName} -> ${path.relative(projectRoot, targetPath)}`);
+      logger.info(`  ${relativeName} -> ${path.relative(projectRoot, targetPath)}`);
     }
   }
 
@@ -240,5 +247,52 @@ async function buildCommand(source: string | undefined, options: Record<string, 
     }, options);
   }
 }
+
+program
+  .command('install')
+  .description('Instala un modulo WebAssembly desde npm o un repositorio git')
+  .argument('<package>', 'Nombre del paquete npm o URL git')
+  .option('--save-dev', 'Guardar como dependencia de desarrollo', false)
+  .option('--dir <dir>', 'Directorio de modulos instalados', 'wasm_modules')
+  .action(async (pkg, options) => {
+    try {
+      const result = await installPackage(pkg, options.dir, { saveDev: options.saveDev });
+      logger.success(`\nModulo instalado en ${pc.cyan(result.dir)}`);
+    } catch (err: any) {
+      logger.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('test')
+  .description('Ejecuta los tests de un modulo WebAssembly')
+  .argument('[source]', 'Archivo .wasm o directorio', '.')
+  .option('--entry <name>', 'Funcion de entrada para test', 'test')
+  .option('--wasmtime-path <path>', 'Ruta personalizada a Wasmtime')
+  .action(async (source, options) => {
+    try {
+      const ok = await runTests(source, { entry: options.entry, wasmtimePath: options.wasmtimePath });
+      if (!ok) process.exit(1);
+    } catch (err: any) {
+      logger.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('bench')
+  .description('Ejecuta benchmarks de compilacion y ejecucion')
+  .argument('[source]', 'Archivo .wasm o directorio', '.')
+  .option('--entry <name>', 'Funcion de entrada', '_start')
+  .option('--runs <n>', 'Cantidad de ejecuciones', '3')
+  .action(async (source, options) => {
+    try {
+      await runBenchmark(source, { entry: options.entry, runs: parseInt(options.runs, 10) });
+    } catch (err: any) {
+      logger.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
 
 program.parse(process.argv);
