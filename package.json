@@ -6,7 +6,7 @@
     "postbuild": "node scripts/postbuild.mjs",
     "start": "pnpm --filter wasm-linker start",
     "dev": "pnpm --filter wasm-linker dev",
-    "clean": "pnpm -r exec rm -rf dist node_modules",
+    "clean": "node scripts/clean.mjs",
     "test": "pnpm -r test",
     "release": "pnpm build && pnpm test && pnpm -r publish",
     "ci:version": "changeset version",
