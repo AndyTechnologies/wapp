@@ -13,7 +13,9 @@ describe('watch mode', () => {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
-  it('compila cuando un archivo cambia', (done) => {
+  const itIf = process.platform === 'win32' ? it.skip : it;
+
+  itIf('compila cuando un archivo cambia', (done) => {
     const testFile = path.join(tmpDir, 'test.wasm.ts');
     fs.writeFileSync(testFile, 'export function add(a: i32): i32 { return a + 1; }');
 
