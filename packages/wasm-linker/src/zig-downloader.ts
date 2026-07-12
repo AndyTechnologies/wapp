@@ -4,7 +4,7 @@ import fs from 'fs';
 import { spawnSync } from 'child_process';
 import { downloadFileWithResume } from './downloader.js';
 import type { DownloadOptions } from './downloader.js';
-import { extractTarXz } from './extract.js';
+import { extractTarXz, extractZip } from './extract.js';
 
 const ZIG_VERSION = process.env.ZIG_VERSION || '0.16.0';
 const ZIG_BASE_URL = `https://ziglang.org/download/${ZIG_VERSION}`;
@@ -81,7 +81,11 @@ export async function ensureZigAvailable(dlOpts?: DownloadOptions): Promise<stri
   await downloadFileWithResume(info.url, archivePath, dlOpts);
 
   console.log('Extrayendo Zig...');
-  await extractTarXz(archivePath, cacheDir, 1);
+  if (info.fileName.endsWith('.zip')) {
+    await extractZip(archivePath, cacheDir);
+  } else {
+    await extractTarXz(archivePath, cacheDir, 1);
+  }
   fs.unlinkSync(archivePath);
 
   const exe = zigExecutablePath();

@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { downloadFileWithResume } from './downloader.js';
 import type { DownloadOptions } from './downloader.js';
-import { extractTarXz } from './extract.js';
+import { extractTarXz, extractZip } from './extract.js';
 
 const WASMTIME_VERSION = process.env.WASMTIME_VERSION || '46.0.1';
 const WASMTIME_BASE_URL = `https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}`;
@@ -80,7 +80,11 @@ export async function ensureWasmtimeAvailable(dlOpts?: DownloadOptions): Promise
   await downloadFileWithResume(info.url, archivePath, dlOpts);
 
   console.log('Extrayendo...');
-  await extractTarXz(archivePath, cacheDir, 1);
+  if (info.fileName.endsWith('.zip')) {
+    await extractZip(archivePath, cacheDir);
+  } else {
+    await extractTarXz(archivePath, cacheDir, 1);
+  }
   fs.unlinkSync(archivePath);
 
   const result = getWasmtimeCachedPaths();

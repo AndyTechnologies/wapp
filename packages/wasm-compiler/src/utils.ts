@@ -18,7 +18,7 @@ export function resolveImportPath(
   for (const alias of aliases) {
     if (typeof alias.find === 'string' && importPath.startsWith(alias.find)) {
       const rest = importPath.slice(alias.find.length);
-      return path.resolve(alias.replacement, rest);
+      return path.resolve(alias.replacement, rest).split(path.sep).join('/');
     }
     if (alias.find instanceof RegExp && alias.find.test(importPath)) {
       return importPath.replace(alias.find, alias.replacement);
@@ -26,7 +26,7 @@ export function resolveImportPath(
   }
 
   if (importPath.startsWith('.')) {
-    return path.resolve(path.dirname(importer), importPath);
+    return path.resolve(path.dirname(importer), importPath).split(path.sep).join('/');
   }
 
   return importPath;

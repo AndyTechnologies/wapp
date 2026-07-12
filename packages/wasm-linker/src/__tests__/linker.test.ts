@@ -42,9 +42,13 @@ describe('wasm-linker', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(fs.existsSync(outputExe)).toBe(true);
 
-    const runResult = spawnSync(outputExe, [], { encoding: 'utf-8' });
+    const exePath = fs.existsSync(outputExe)
+      ? outputExe
+      : outputExe + (os.platform() === 'win32' ? '.exe' : '');
+    expect(fs.existsSync(exePath)).toBe(true);
+
+    const runResult = spawnSync(exePath, [], { encoding: 'utf-8' });
     expect(runResult.status).toBe(0);
   });
 });
