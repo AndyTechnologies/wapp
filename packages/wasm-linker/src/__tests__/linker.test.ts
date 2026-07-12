@@ -39,6 +39,7 @@ describe('wasm-linker', () => {
       cwd: projectRoot,
       stdio: 'pipe',
       encoding: 'utf-8',
+      maxBuffer: 50 * 1024 * 1024,
     });
 
     if (result.status !== 0) {
