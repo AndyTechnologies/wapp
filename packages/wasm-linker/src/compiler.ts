@@ -38,6 +38,7 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
       if (code === 0) resolve();
       else {
         const stderr = Buffer.concat(stderrChunks).toString('utf-8').trim();
+        if (stderr) logger.error(stderr);
         reject(new ZigError(`zig c++ termino con codigo ${code}`, { exitCode: code, stderr }));
       }
     });

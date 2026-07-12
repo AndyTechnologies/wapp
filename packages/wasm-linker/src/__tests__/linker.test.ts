@@ -43,6 +43,8 @@ describe('wasm-linker', () => {
 
     if (result.status !== 0) {
       console.error('BUILD STDERR:', result.stderr);
+      console.error('BUILD STDOUT:', result.stdout);
+      console.error('BUILD ERROR:', result.error);
     }
     expect(result.status).toBe(0);
 
@@ -52,6 +54,10 @@ describe('wasm-linker', () => {
     expect(fs.existsSync(exePath)).toBe(true);
 
     const runResult = spawnSync(exePath, [], { encoding: 'utf-8' });
+    if (runResult.status !== 0) {
+      console.error('RUN STDERR:', runResult.stderr);
+      console.error('RUN STDOUT:', runResult.stdout);
+    }
     expect(runResult.status).toBe(0);
   });
 });
