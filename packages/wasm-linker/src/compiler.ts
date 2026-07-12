@@ -19,11 +19,14 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
     opts.source,
     opts.libPath,
     '-o', opts.output,
-    '-lpthread', '-ldl', '-lm',
   ];
 
   if (process.platform === 'darwin') {
     args.push('-framework', 'Security', '-framework', 'Foundation');
+  } else if (process.platform === 'win32') {
+    args.push('-lpthread');
+  } else {
+    args.push('-lpthread', '-ldl', '-lm');
   }
 
   logger.detail(`Compilando: ${zigExe} ${args.join(' ')}`);

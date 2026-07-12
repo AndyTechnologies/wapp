@@ -41,6 +41,9 @@ program
       logger.success(`Ejecutable creado: ${options.output}`);
     } catch (err: any) {
       logger.error(`\nError: ${err.message}`);
+      if (err.details?.stderr) {
+        logger.detail(`stderr:\n${err.details.stderr}`);
+      }
       process.exit(1);
     }
   });
