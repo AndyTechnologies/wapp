@@ -41,6 +41,9 @@ describe('wasm-linker', () => {
       encoding: 'utf-8',
     });
 
+    if (result.status !== 0) {
+      console.error('BUILD STDERR:', result.stderr);
+    }
     expect(result.status).toBe(0);
 
     const exePath = fs.existsSync(outputExe)
