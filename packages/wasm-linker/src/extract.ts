@@ -83,10 +83,17 @@ export async function extractZip(archive: string, cwd: string, strip: number = 0
     try {
       await extractZipInner(archive, tmpDir);
       const entries = fs.readdirSync(tmpDir).filter(e => e !== '.' && e !== '..');
-      for (const entry of entries) {
-        const src = path.join(tmpDir, entry);
-        const dest = path.join(cwd, entry);
-        fs.renameSync(src, dest);
+
+      if (strip === 1 && entries.length === 1 && fs.statSync(path.join(tmpDir, entries[0])).isDirectory()) {
+        const topDir = path.join(tmpDir, entries[0]);
+        const innerEntries = fs.readdirSync(topDir);
+        for (const entry of innerEntries) {
+          fs.renameSync(path.join(topDir, entry), path.join(cwd, entry));
+        }
+      } else {
+        for (const entry of entries) {
+          fs.renameSync(path.join(tmpDir, entry), path.join(cwd, entry));
+        }
       }
     } finally {
       if (fs.existsSync(tmpDir)) {
