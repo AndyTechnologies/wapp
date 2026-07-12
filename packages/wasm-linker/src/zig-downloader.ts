@@ -82,7 +82,7 @@ export async function ensureZigAvailable(dlOpts?: DownloadOptions): Promise<stri
 
   console.log('Extrayendo Zig...');
   if (info.fileName.endsWith('.zip')) {
-    await extractZip(archivePath, cacheDir);
+    await extractZip(archivePath, cacheDir, 1);
   } else {
     await extractTarXz(archivePath, cacheDir, 1);
   }
@@ -90,17 +90,7 @@ export async function ensureZigAvailable(dlOpts?: DownloadOptions): Promise<stri
 
   const exe = zigExecutablePath();
   if (!fs.existsSync(exe)) {
-    const entries = fs.readdirSync(cacheDir);
-    const zigDir = entries.find(e => e.startsWith('zig-'));
-    if (zigDir) {
-      const actualExe = path.join(cacheDir, zigDir, 'zig' + (os.platform() === 'win32' ? '.exe' : ''));
-      if (fs.existsSync(actualExe)) {
-        fs.renameSync(actualExe, exe);
-      }
-    }
-    if (!fs.existsSync(exe)) {
-      throw new Error('No se encontro el ejecutable zig tras la extraccion.');
-    }
+    throw new Error('No se encontro el ejecutable zig tras la extraccion.');
   }
 
   if (os.platform() !== 'win32') {

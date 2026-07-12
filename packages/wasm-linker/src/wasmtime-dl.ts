@@ -81,7 +81,7 @@ export async function ensureWasmtimeAvailable(dlOpts?: DownloadOptions): Promise
 
   console.log('Extrayendo...');
   if (info.fileName.endsWith('.zip')) {
-    await extractZip(archivePath, cacheDir);
+    await extractZip(archivePath, cacheDir, 1);
   } else {
     await extractTarXz(archivePath, cacheDir, 1);
   }

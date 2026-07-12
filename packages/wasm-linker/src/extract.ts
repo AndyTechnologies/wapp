@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from 'child_process';
 import * as tar from 'tar';
+import fs from 'fs';
+import path from 'path';
 import os from 'os';
 
 async function extractWithXzPipe(archive: string, cwd: string, strip: number): Promise<void> {
@@ -45,7 +47,7 @@ export async function extractTarXz(archive: string, cwd: string, strip: number):
   await extractWithXzPipe(archive, cwd, strip);
 }
 
-export async function extractZip(archive: string, cwd: string): Promise<void> {
+async function extractZipInner(archive: string, cwd: string): Promise<void> {
   if (os.platform() === 'win32') {
     const ps = spawn('powershell', [
       '-NoProfile', '-Command',
@@ -72,4 +74,26 @@ export async function extractZip(archive: string, cwd: string): Promise<void> {
     proc.on('close', (code) => code === 0 ? resolve() : reject(new Error(`unzip fallo: ${code}`)));
     proc.on('error', reject);
   });
+}
+
+export async function extractZip(archive: string, cwd: string, strip: number = 0): Promise<void> {
+  if (strip > 0) {
+    const tmpDir = path.join(cwd, `.tmp_extract_${Date.now()}`);
+    fs.mkdirSync(tmpDir, { recursive: true });
+    try {
+      await extractZipInner(archive, tmpDir);
+      const entries = fs.readdirSync(tmpDir).filter(e => e !== '.' && e !== '..');
+      for (const entry of entries) {
+        const src = path.join(tmpDir, entry);
+        const dest = path.join(cwd, entry);
+        fs.renameSync(src, dest);
+      }
+    } finally {
+      if (fs.existsSync(tmpDir)) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    }
+  } else {
+    await extractZipInner(archive, cwd);
+  }
 }
