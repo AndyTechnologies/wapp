@@ -3,13 +3,7 @@
   "private": true,
   "scripts": {
     "build": "pnpm -r build",
-    "postbuild": "pnpm mkdir:dists && pnpm copy:dists",
-    "mkdir:dists": "mkdir -p dist/dist-linker dist/dist-compiler dist/dist-cli dist/dist-types",
-    "copy:dists": "pnpm copy:linker && pnpm copy:compiler && pnpm copy:cli && pnpm copy:types",
-    "copy:linker": "cp -r packages/wasm-linker/dist/* ./dist/dist-linker/",
-    "copy:compiler": "cp -r packages/wasm-compiler/dist/* ./dist/dist-compiler/",
-    "copy:cli": "cp -r packages/wapp-cli/dist/* ./dist/dist-cli/",
-    "copy:types": "cp -r packages/wapp-types/dist/* ./dist/dist-types/",
+    "postbuild": "node scripts/postbuild.mjs",
 
     "start": "pnpm --filter wasm-linker start",
     "dev": "pnpm --filter wasm-linker dev",
