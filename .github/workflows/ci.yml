@@ -35,6 +35,12 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
+      - name: Cache zig and wasmtime
+        uses: actions/cache@v4
+        with:
+          path: ~/.wasm-linker
+          key: wasm-linker-${{ runner.os }}-${{ hashFiles('packages/wasm-linker/src/zig-downloader.ts', 'packages/wasm-linker/src/wasmtime-dl.ts') }}
+
       - name: Install dependencies
         run: pnpm install
 

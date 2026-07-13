@@ -24,7 +24,7 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
   if (process.platform === 'darwin') {
     args.push('-framework', 'Security', '-framework', 'Foundation');
   } else if (process.platform === 'win32') {
-    args.push('-lpthread');
+    // MSVC target on Windows: threading is built-in, no extra libs needed
   } else {
     args.push('-lpthread', '-ldl', '-lm');
   }
