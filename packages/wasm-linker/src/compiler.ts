@@ -13,7 +13,7 @@ export interface CompileOptions {
 export async function compileWithZig(zigExe: string, opts: CompileOptions): Promise<void> {
   const args = [
     'c++',
-    '-target', opts.target || 'native',
+    '-target', opts.target || (process.platform === 'win32' ? 'x86_64-windows-msvc' : 'native'),
     '-I', opts.includeDir,
     '-Wno-nullability-completeness',
     opts.source,
