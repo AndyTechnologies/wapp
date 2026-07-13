@@ -16,7 +16,6 @@ export async function compileWithZig(zigExe: string, opts: CompileOptions): Prom
     '-target', opts.target || 'native',
     '-I', opts.includeDir,
     '-Wno-nullability-completeness',
-    '-Wl,--allow-multiple-definition',
     opts.source,
     opts.libPath,
     '-o', opts.output,
